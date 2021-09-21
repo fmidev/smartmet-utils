@@ -1,18 +1,11 @@
 MODULE = utils
 
+include makefile-fragments/makefile.inc
+
 PROG = \
 	smartbuildrev \
 	smartmkrelease \
 	smartmktag
-
-INSTALL_PROG = install -m 775
-INSTALL_DATA = install -m 644
-
-ifeq ($(origin BINDIR), undefined)
-  bindir = $(PREFIX)/bin
-else
-  bindir = $(BINDIR)
-endif
 
 .PHONY: rpm
 
