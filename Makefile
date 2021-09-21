@@ -29,6 +29,9 @@ install:
 	 echo $(INSTALL_PROG) $$prog $(bindir)/$$prog; \
 	 $(INSTALL_PROG) $$prog $(bindir)/$$prog; \
 	done
+	@mkdir -p $(datadir)/smartmet/devel
+	$(INSTALL_DATA) makefile-fragments/makefile.inc $(datadir)/smartmet/devel/makefile.inc
+	$(INSTALL_DATA) makefile-fragments/makefile-abicheck.inc $(datadir)/smartmet/devel/makefile-abicheck.inc
 
 rpm: 	clean
 	rm -f smartmet-$(MODULE).tar.gz

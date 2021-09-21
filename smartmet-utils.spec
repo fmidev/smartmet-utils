@@ -33,6 +33,7 @@ Summary: FMI SmartSet server development related utils and files
 Provides: smartbuildrev
 Provides: smartmkrelease
 Provides: smartmktag
+Provides: smartmet-makefile-inc
 Requires: make bash perl
 
 %description devel
@@ -45,6 +46,8 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartbuildrev
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
+%{_datadir}/smartmet/devel/makefile.inc
+%{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
 * Tue Sep 21 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.9.21-1.fmi
