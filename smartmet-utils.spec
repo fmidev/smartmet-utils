@@ -29,8 +29,10 @@ rm -rf $RPM_BUILD_ROOT
 rm -rf $RPM_BUILD_ROOT
 
 %package devel
-Summary: FMI SmartSet server development related utils
+Summary: FMI SmartSet server development related utils and files
 Provides: smartbuildrev
+Provides: smartmkrelease
+Provides: smartmktag
 Requires: make bash perl
 
 %description devel
@@ -41,6 +43,8 @@ FMI SmartSet server development related utils and files
 %files devel
 %defattr(0775,root,root,0775)
 %{_bindir}/smartbuildrev
+%{_bindir}/smartmkrelease
+%{_bindir}/smartmktag
 
 %changelog
 * Tue Sep 21 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.9.21-1.fmi

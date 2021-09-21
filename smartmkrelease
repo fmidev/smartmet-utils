@@ -1,0 +1,181 @@
+#! /usr/bin/perl
+
+use strict;
+use File::Basename;
+
+sub get_head_rev
+{
+    my ($input, $rev);
+    my $dir = $_[0];
+    open($input, "git -C $dir log -1 |") or die "Failed to get HEAD revision: $!";
+    while (<$input>) {
+	chomp;
+	if (m/^commit\s+/) {
+	    s/^commit\s//;
+	    $rev=$_;
+	}
+    }
+    close $input;
+    return $rev;
+}
+
+sub extract_spec_version
+{
+    my ($input, $version, $release);
+    my $dir = $_[0];
+    my $fn = $_[1];
+    my $rev = $_[2];
+    open($input, "git -C $dir show $rev:$fn |")
+	 or "Failed to run git -C $dir show $rev:$fn: $!";
+    while (<$input>) {
+	chomp;
+	if (m/\s*Version:/) {
+	    s/\s*Version:\s*//;
+	    s/\s*$//;
+	    $version = $_;
+	} elsif (m/\s*Release:/) {
+	    s/\s*Release:\s*//;
+	    s/\%.*//;
+	    $release = $_;
+	}
+    }
+    close $input;
+    defined($version) and defined($release)
+	or die "Failed to extract version and release from $dir/$fn for revision $rev";
+    return "${version}-${release}";
+}
+
+sub git_config_get
+{
+    my $dir = shift;
+    my $cfgname = shift;
+    my ($input, $retval);
+    open($input, "git config --get $cfgname |")
+	or die "Failed to run 'git config --get': $!";
+    while (<$input>) {
+	chomp;
+	$retval = $_;
+	last;
+    }
+    close $input;
+    return $retval
+}
+
+sub get_revison_and_version
+{
+    my $input;
+    my $dir = shift;
+    my $count = shift;
+    if ($count == 0) {
+	$count = 10;
+    }
+    my @spec_files = glob("$dir/*.spec");
+    printf("Found spec files: %s\n", join(' ',@spec_files));
+    scalar @spec_files == 1 or die "Exactly one SPEC file expected in $dir";
+
+    my $fn = basename($spec_files[0]);
+    open($input, "git -C $dir log -$count $fn |")
+	or die "Failed to get git history of $fn: $!";
+    my ($rev, $version);
+    $version = undef;
+
+    while (<$input>) {
+	if (m/^commit/) {
+	    chomp;
+	    s/^commit\s+//;
+	    my $curr_rev = $_;
+	    my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
+	    if (!$version) {
+		$rev = $curr_rev;
+		$version = $curr_ver;
+	    } elsif ($version eq $curr_ver) {
+		$rev = $curr_rev;
+	    } else {
+		last;
+	    }
+	}
+    }
+    close $input;
+    return ($rev, $version);
+}
+
+sub create_new_version
+{
+    my $dir = shift;
+    my $reason = shift;
+    my ($rev, $oldver_full) = get_revison_and_version($dir, 10);
+    $oldver_full =~ m/([0-9\.]+)-([0-9]+)/;
+    my $oldver = $1;
+    my $release = $2;
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime();
+    my $ver = sprintf("%d.%d.%d", $year - 100, $mon + 1, $mday);
+    my @months = qw( Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec );
+    my @days = qw(Sun Mon Tue Wed Thu Fri Sat Sun);
+    my $email = git_config_get($dir, "user.name")
+	. " <"
+	. git_config_get($dir, "user.email")
+	. ">";
+    if ($ver eq $oldver) {
+	$release++;
+    } else {
+	$release = 1;
+    }
+
+    my @spec_files = glob("$dir/*.spec");
+    scalar @spec_files == 1 or die "Exactly one SPEC file expected in $dir";
+    my $fn = $spec_files[0];
+
+    my ($input, $output);
+    open($input, "<$fn") or die "Failed to open SPEC file: $!";
+    open($output, ">${fn}.new") or die "Failed to create ${fn}.new: $!";
+
+    while (<$input>) {
+	chomp;
+	if (m/\s*Version:/) {
+	    print $output "Version: $ver\n";
+	} elsif (m/\s*Release:/) {
+	    print $output "Release: ".${release}."%{?dist}.fmi\n";
+	} elsif (m/\s*%changelog\s*/) {
+	    print $output "%changelog\n";
+	    print $output
+		sprintf("* %s %s %2d %4d %s %s-%s.fmi\n",
+			$days[$wday], $months[$mon], $mday, 1900 + $year,
+			$email, $ver, ${release});
+	    print $output "- $reason\n";
+	    print $output "\n";
+        } else {
+            print $output "$_\n";
+	}
+    }
+    close $input;
+    close $output;
+
+    print ("Created version ${ver}-${release}\n");
+
+    system("diff -u $fn $fn.new");
+    unlink("$fn.back");
+    rename($fn, "$fn.bak");
+    if (rename("$fn.new", $fn)) {
+        unlink("$fn.bak");
+    }
+    my $bn = basename($fn);
+    system("git -C $dir add $bn");
+    system("git -C $dir commit -m \"New version ${ver}-${release}.fmi\"");
+    system("git -C $dir tag ${ver}-${release}");
+}
+
+my $reason = join ' ', @ARGV;
+if ($reason =~ m/[^\s]/) {
+    my $input;
+    open ($input, "git diff |") or die "Failed to run 'git diff: $!";
+    my @diffs = <$input>;
+    if (scalar @diffs == 0) {
+        print ("Creating new version and tagging it\n");
+        create_new_version(".", $reason);
+    } else {
+        print "ERROR: Commit changes and retry!\n";
+        exit(1);
+    }
+} else {
+    print("Version description must be provided in command line\n");
+}

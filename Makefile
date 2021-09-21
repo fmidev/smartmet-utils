@@ -1,7 +1,9 @@
 MODULE = utils
 
 PROG = \
-	smartbuildrev
+	smartbuildrev \
+	smartmkrelease \
+	smartmktag
 
 INSTALL_PROG = install -m 775
 INSTALL_DATA = install -m 644
