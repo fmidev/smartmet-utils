@@ -1,0 +1,38 @@
+#! /usr/bin/perl
+
+#
+#  Checks out required revision from GIT (current directory) into tempory directory
+#  and builds RPM packages from it.
+#
+#  One command line parameter (revision) may be provided. HEAD (current revision) is
+#  being used when not specified)
+#
+
+use strict;
+use File::Temp qw/tempdir/;
+
+my $rev = "HEAD";
+if ($#ARGV == 0) {
+   $rev = $ARGV[0];
+} elsif ($#ARGV > 0) {
+   die "No more than one argument expected";
+}
+
+my $build_top = tempdir(CLEANUP => 1);
+my $build_dir = "$build_top/$rev";
+
+print("Build directory: $build_dir\n");
+
+my $cmd = "git archive --format=tar --prefix=$rev/ --output $build_top/__source__.tar $rev:";
+print "Running: $cmd\n";
+system($cmd) == 0 or die "Failed to run $cmd: $!";
+
+$cmd = "tar xf $build_top/__source__.tar -C $build_top";
+print "Running: $cmd\n";
+system($cmd) == 0 or die "Failed to run $cmd: $!";
+
+unlink("$build_top/__source__.tar");
+
+$cmd = "make -C $build_dir rpm";
+print "Running: $cmd\n";
+system($cmd) == 0 or die "Failed to build RPM package for revision $rev";
