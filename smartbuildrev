@@ -4,17 +4,27 @@
 #  Checks out required revision from GIT (current directory) into tempory directory
 #  and builds RPM packages from it.
 #
-#  One command line parameter (revision) may be provided. HEAD (current revision) is
-#  being used when not specified)
+#  Examples:
 #
-
+#  ./smartbuildrev
+#       package top in current directory, use currently checked out revision
+#
+#  ./smartbuildrev FOO
+#       package top in current directory, use revision FOO (for example tag FOO)
+#
+#  ./smartbuildrev FOO BAR
+#       package top in directory BAR, use revision FOO (for example tag FOO)
+#
 use strict;
 use File::Temp qw/tempdir/;
 
 my $rev = "HEAD";
+my $top_opt = "";
 if ($#ARGV == 0) {
-   $rev = $ARGV[0];
-} elsif ($#ARGV > 0) {
+    $rev = $ARGV[0];
+} elsif ($#ARGV == 1) {
+    $top_opt = "-C $ARGV[1]"
+} else {
    die "No more than one argument expected";
 }
 
@@ -23,7 +33,7 @@ my $build_dir = "$build_top/$rev";
 
 print("Build directory: $build_dir\n");
 
-my $cmd = "git archive --format=tar --prefix=$rev/ --output $build_top/__source__.tar $rev:";
+my $cmd = "git $top_opt archive --format=tar --prefix=$rev/ --output $build_top/__source__.tar $rev:";
 print "Running: $cmd\n";
 system($cmd) == 0 or die "Failed to run $cmd: $!";
 
