@@ -31,3 +31,6 @@ rpm: 	clean
 	tar -czvf smartmet-$(MODULE).tar.gz --exclude-vcs --transform "s,^,$(MODULE)/," *
 	rpmbuild --target noarch -tb smartmet-$(MODULE).tar.gz
 	rm -f smartmet-$(MODULE).tar.gz
+
+test:
+	echo Nothing to test
