@@ -152,8 +152,13 @@ endif
 
 ifneq ($(filter configpp,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out configpp, $(REQUIRES_LEFT))
-  INCLUDES += $(shell pkg-config --cflags libconfig++ 2>/dev/null | sed -r 's/-I[[:space:]]*/-isystem /g')
-  CONFIGPP_LIBS = $(shell pkg-config --libs libconfig++ 2>/dev/null)
+  ifeq ($(wildcard /usr/libconfig17/lib/libconfig.so),)
+    INCLUDES += $(shell pkg-config --cflags libconfig++ 2>/dev/null | sed -r 's/-I[[:space:]]*/-isystem /g')
+    CONFIGPP_LIBS = $(shell pkg-config --libs libconfig++ 2>/dev/null)
+  else
+    INCLUDES += -I /usr/libconfig17/include
+    CONFIGPP_LIBS = -L /usr/libconfig17/lib -lconfig++ -lconfig
+  endif
   ifeq ($(CONFIGPP_LIBS),)
     REQUIRES_MISSING += libconfig++
   endif
