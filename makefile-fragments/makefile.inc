@@ -45,9 +45,8 @@ OPTIMIZE ?= -O2
 GCC_DIAG_COLOR ?= always
 
 CXX_VERSION_STRING := $(shell $(CXX) --version 2>/dev/null | head -n 1)
-ifeq ($(CXX_VERSION_STRING),)
-  $(error Failed to query compiler version: $(CXX) --version)
-endif
+
+ifneq ($(CXX_VERSION_STRING),)
 
 CXX_ID_ := $(shell echo "$(CXX_VERSION_STRING)" | sed -e 's:[\ -].*::')
 
@@ -304,5 +303,8 @@ endif
 ifneq ($(REQUIRES_LEFT),)
 $(warning Unrecognized entries in REQUIRES variable: $(REQUIRES_LEFT))
 endif
+
+endif
+# end of 'ifneq ($(CXX_VERSION_STRING),)' block
 
 CLEAN_TARGETS :=
