@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 21.9.21
-Release: 3%{?dist}.fmi
+Version: 21.9.24
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -50,6 +50,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Sep 24 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.9.24-1.fmi
+- Update Circel-CI support, do not fail if no C++ compiler found
+
 * Tue Sep 21 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.9.21-3.fmi
 - Update makefile.inc and fix inc file installation
 
