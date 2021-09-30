@@ -10,7 +10,7 @@ URL: http://www.weatherproof.fi
 Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot-%(%{__id_u} -n)
 BuildRequires: make bash
-Requires: make bash perl
+Requires: make bash perl git
 
 %description
 FMI SmartSet server related utils

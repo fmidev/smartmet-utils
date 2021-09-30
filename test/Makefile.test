@@ -1,0 +1,7 @@
+include ../makefile-fragments/makefile.inc
+
+all debug test rpm test-installed:
+
+check-std:
+	$(info Testing detected C++ language standard for gcc-$(CXX_VERSION_STRING))
+	test "$(CXX_STD)" == "$(EXP_CXX_STD)";

@@ -32,5 +32,7 @@ rpm: 	clean
 	rpmbuild --target noarch -tb smartmet-$(MODULE).tar.gz
 	rm -f smartmet-$(MODULE).tar.gz
 
+.PHONY: test
+
 test:
-	echo Nothing to test
+	$(MAKE) -C test $@

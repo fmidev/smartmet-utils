@@ -44,7 +44,11 @@ plugindir ?= $(datadir)/smartmet/plugins
 OPTIMIZE ?= -O2
 GCC_DIAG_COLOR ?= always
 
+ifeq ($(EMPTY_CXX_VERSION),Y)
+CXX_VERSION_STRING :=
+else
 CXX_VERSION_STRING := $(shell $(CXX) --version 2>/dev/null | head -n 1)
+endif
 
 ifneq ($(CXX_VERSION_STRING),)
 
@@ -54,7 +58,8 @@ ifneq ($(filter $(CXX_ID_), clang),)
   USE_CLANG=yes
   CXX_STD ?= c++17
 else
-  GCC_MAJOR := $(shell $(CXX) -dumpversion 2>/dev/null | sed -e 's:\..*::')
+  GCC_VERSION := $(shell $(CXX) -dumpversion 2>/dev/null)
+  GCC_MAJOR := $(shell echo $(GCC_VERSION) | sed -e 's:\..*::')
   USE_CLANG=no
   ifeq ($(GCC_MAJOR),)
     $(error Failed to query compiler version: $(CXX) -dumpversion)
@@ -285,9 +290,15 @@ ifneq ($(filter xerces-c,$(REQUIRES)),)
   REQUIRED_LIBS += $(XERCES_C_LIBS)
 endif
 
+# For testing only
+ifneq ($(filter missing-require-test,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out missing-require-test, $(REQUIRES_LEFT))
+  REQUIRES_MISSING += missing-require-test
+endif
+
 ifneq ($(REQUIRES_MISSING),)
   ifeq ($(wildcard smartmet-*.spec),)
-    ifneq ($(filter all release debug profile rpm test%,$(MAKECMDGOALS)),)
+    ifneq ($(filter all release debug profile rpm,$(MAKECMDGOALS)),)
       $(error Development files missing for: $(REQUIRES_MISSING))
     endif
   else
