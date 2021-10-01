@@ -44,11 +44,7 @@ plugindir ?= $(datadir)/smartmet/plugins
 OPTIMIZE ?= -O2
 GCC_DIAG_COLOR ?= always
 
-ifeq ($(EMPTY_CXX_VERSION),Y)
-CXX_VERSION_STRING :=
-else
 CXX_VERSION_STRING := $(shell $(CXX) --version 2>/dev/null | head -n 1)
-endif
 
 ifneq ($(CXX_VERSION_STRING),)
 
