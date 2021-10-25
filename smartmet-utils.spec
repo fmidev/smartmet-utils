@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 21.9.30
+Version: 21.10.25
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -50,6 +50,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Mon Oct 25 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.10.25-1.fmi
+- makefile.inc: add providing rpmbuild options
+
 * Thu Sep 30 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.9.30-1.fmi
 - Update and add some tests for makefile.inc
 
