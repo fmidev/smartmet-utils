@@ -315,3 +315,14 @@ endif
 # end of 'ifneq ($(CXX_VERSION_STRING),)' block
 
 CLEAN_TARGETS :=
+
+#############################
+#     rpmbuild options      #
+#############################
+
+RPMBUILD_OPT ?=
+WITH_TESTS ?=
+
+ifneq ($(WITH_TESTS),)
+  RPMBUILD_OPT += --define "with-tests 1"
+endif
