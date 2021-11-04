@@ -43,6 +43,7 @@ FMI SmartSet server development related utils and files
 
 %files devel
 %defattr(0775,root,root,0775)
+%{_bindir}/smartbuildcfg
 %{_bindir}/smartbuildrev
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag

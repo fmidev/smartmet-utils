@@ -1,0 +1,195 @@
+#! /usr/bin/perl
+
+use strict;
+use Getopt::Long;
+use Cwd 'abs_path';
+
+use Data::Dumper;
+
+my $show_prefix = '';
+my $show_cflags = '';
+my $show_libs = '';
+
+
+$::script_path = abs_path($0);
+
+my @CFLAGS;
+my @LDFLAGS;
+
+GetOptions(
+    "prefix" => \$show_prefix,
+    , "cflags" => \$show_cflags,
+    , "libs" => \$show_libs
+    );
+
+my $CXX;
+if (defined $ENV{CXX}) {
+    $CXX = "g++";
+} else {
+    $CXX = $ENV{CXX};
+}
+
+if ($show_prefix) {
+    my  $prefix = GetPrefix();
+    print "$prefix\n";
+    exit 0;
+} elsif ($show_cflags) {
+    my $r = GetCompilerVersionInfo($CXX);
+    if (defined($r)) {
+	ProcessRequires();
+	my $result = join ' ', @CFLAGS;
+	print "$result\n";
+    }
+} elsif ($show_libs) {
+    my $r = GetCompilerVersionInfo($CXX);
+    if (defined($r)) {
+	ProcessRequires();
+	my $result = join ' ', @LDFLAGS;
+	print "$result\n";
+    }
+}
+
+sub GetPrefix()
+{
+    my $script_path = abs_path($0);
+    my $result = $script_path;
+    $result =~ s|/[^/]+/[^/]+$||;
+    return $result;
+}
+
+sub GetCompilerVersionInfo()
+{
+    my $CXX = shift;
+    if (not defined($CXX)) {
+	$CXX = "g++";
+    }
+
+    my $cxx_version_string;
+    if (open my $fd, "$CXX --version 2>/dev/null |") {
+	$cxx_version_string = <$fd>;
+	close $fd;
+    } else {
+	return undef;
+    }
+
+    my $result = ();
+    my $cxx_id_ = $cxx_version_string;
+    $cxx_id_ =~ s:[\ -].*::;
+    if ($cxx_id_ =~ m/^clang/) {
+	$result->{IS_CLANG} = 1;
+	$result->{IS_GCC} = 0;
+	$result->{STD} = 'c++17';
+    } elsif ($cxx_id_ =~ m/^(?:gcc|g++)/) {
+	$result->{IS_CLANG} = 0;
+	$result->{IS_GCC} = 1;
+	my $ver;
+	my @words = split m/\s/, $cxx_version_string;
+	pop @words;
+	foreach my $word (@words) {
+	    if ($word =~ m/^([0-9][0-9]?)\.([0-9])\.[0-9]$/) {
+		my $major = $1;
+		my $minor = $2;
+		if ($major >= 6) {
+		    $ver = $major;
+		    $result->{STD} = 'c++17';
+		} elsif ($major == 5) {
+		    $major = $0;
+		    $ver = $major;
+		    $result->{STD} = 'c++11';
+		} else {
+		    $major == 4 and $minor >= 8 or die "GCC $word is too old";
+		    $ver = "$major.$minor";
+		}
+		$result->{GCC_VER} = $ver;
+		last;
+	    }
+	}
+    }
+
+    push @CFLAGS, "-std=$result->{STD}";
+
+    # FIXME: add warning related options 
+
+    return \$result;
+}
+
+sub ProcessRequires()
+{
+    my %requires;
+    my (@unrecognized, @pkg_config_list);
+ 
+    # Collect all requires
+    foreach my $arg (@ARGV) {
+	$requires{$arg} = 0;
+    }
+
+    if ( -d "/usr/include/boost169" ) {
+	push @CFLAGS, ("-isystem /usr/include/boost169");
+	push @LDFLAGS, ("-L/usr/lib64/boost169");
+    }
+
+    foreach ("cairo", "fmt", "icu-i18n", "jsoncpp", "librsvg", "mariadb", "xerces-c") {
+	if (defined($requires{$_})) {
+	    push @pkg_config_list, $_;
+	    $requires{$_} = 1;
+	}
+    }
+
+    if (defined($requires{"configpp"})) {
+	if (-f "/usr/libconfig17/lib/libconfig.so") {
+	    push @CFLAGS, ("-isystem /usr/libconfig17/include");
+	    push @LDFLAGS, ("-L /usr/libconfig17/lib", "-lconfig++", "-lconfig");
+	} else {
+	    push @pkg_config_list, "libconfig++";
+	}
+	$requires{"configpp"} = 1;
+    }
+
+    if (defined($requires{"ctpp2"})) {
+	if (-f "/usr/bin/ctpp2-config") {
+	    # FIXME: use ctpp2-config instead
+	    push @LDFLAGS, ("-lctpp2");
+	}
+	$requires{"ctpp2"} = 1;
+    }
+
+
+    if (defined($requires{gdal})) {
+	if (-d "/usr/gdal32/include") {
+	    push @CFLAGS, ("-isystem /usr/gdal32/include");
+	    push @LDFLAGS, ("-L/usr/gdal32/lib", "-lgdal");
+	} elsif (-d "/usr/gdal30/include") {
+	    push @CFLAGS, ("-isystem /usr/gdal30/include");
+	    push @LDFLAGS, ("-L/usr/gdal30/lib", "-lgdal");
+	} else {
+	    push @CFLAGS, ("-isystem /usr/include/gdal");
+	    push @LDFLAGS, ("-lgdal");
+	}
+	$requires{"gdal"} = 1;
+    }
+
+    if (defined($requires{geos})) {
+	my ($cf2, $lf2);
+	if (-f "/usr/geos39/bin/geos-config") {
+	    $cf2 = `/usr/geos39/bin/geos-config --cflags`;
+	    $lf2 = `/usr/geos39/bin/geos-config --libs`;
+	} elsif (-f "/usr/bin/geos-config") {
+	    $cf2 = `/usr/bin/geos-config --cflags`;
+	    $lf2 = `/usr/bin/geos-config --libs`;
+	}
+	$cf2 =~ s|-I\s*/|-isystem |g;
+	push @CFLAGS, split m/\s+/, $cf2;
+	push @LDFLAGS, split m/\s+/, $lf2;
+	$requires{"geos"} = 1;
+    }
+
+    if (@pkg_config_list > 0) {
+	my $pkglist = join ' ', @pkg_config_list;
+	my @cf2 = split m/\s+/,`pkg-config --cflags $pkglist`;
+	my $lf2 = `pkg-config --libs $pkglist`;
+	foreach (@cf2) { s/^-I/-isystem /; }
+	push @CFLAGS, (@cf2);
+	push @LDFLAGS, split m/\s+/, $lf2;
+    }
+}
+
