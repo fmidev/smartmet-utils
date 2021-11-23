@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 21.11.4
+Version: 21.11.23
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -51,6 +51,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Nov 23 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.11.23-1.fmi
+- Support PGDG gdal-3.3 packages
+
 * Thu Nov  4 2021 Andris Pavēnis <andris.pavenis@fmi.fi> 21.11.4-1.fmi
 - Add initial version of script smartbuildcfg
 
