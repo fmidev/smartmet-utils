@@ -189,13 +189,13 @@ endif
 
 ifneq ($(filter gdal,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out gdal, $(REQUIRES_LEFT))
-  ifneq "$(wildcard /usr/gdal33/include)" ""
-    INCLUDES += -isystem /usr/gdal33/include
-    GDAL_LIBS = -L$(PREFIX)/gdal33/lib -lgdal
+  ifneq "$(wildcard /usr/gdal34/include)" ""
+    INCLUDES += -isystem /usr/gdal34/include
+    GDAL_LIBS = -L$(PREFIX)/gdal34/lib -lgdal
   else
-    ifneq "$(wildcard /usr/gdal32/include)" ""
-      INCLUDES += -isystem /usr/gdal32/include
-      GDAL_LIBS = -L$(PREFIX)/gdal32/lib -lgdal
+    ifneq "$(wildcard /usr/gdal33/include)" ""
+      INCLUDES += -isystem /usr/gdal33/include
+      GDAL_LIBS = -L$(PREFIX)/gdal33/lib -lgdal
     else
       INCLUDES += -isystem /usr/include/gdal
       GDAL_LIBS = -lgdal
@@ -206,12 +206,20 @@ endif
 
 ifneq ($(filter geos,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out geos, $(REQUIRES_LEFT))
-  ifneq "$(wildcard /usr/geos39/bin/geos-config)" ""
-    INCLUDES += $(shell /usr/geos39/bin/geos-config --cflags 2>/dev/null | sed -r 's/-I[[:space:]]*/-isystem /g')
-    GEOS_LIBS = $(shell /usr/geos39/bin/geos-config --libs 2>/dev/null)
+  ifneq "$(wildcard /usr/geos310/bin/geos-config)" ""
+    # Avoid unresolved references with geos-3.10 (src/inline.cpp dropped from sources)
+    FLAGS += -DGEOS_INLINE
+    INCLUDES += $(shell /usr/geos310/bin/geos-config --cflags 2>/dev/null | sed -r 's/-I[[:space:]]*/-isystem /g')
+#   /usr/geos310/bin/geos-config --libs is broken
+    GEOS_LIBS = -L /usr/geos310/lib64 -lgeos
   else
-    ifneq "$(wildcard /usr/bin/geos-config)" ""
-      GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
+    ifneq "$(wildcard /usr/geos39/bin/geos-config)" ""
+      INCLUDES += $(shell /usr/geos39/bin/geos-config --cflags 2>/dev/null | sed -r 's/-I[[:space:]]*/-isystem /g')
+      GEOS_LIBS = $(shell /usr/geos39/bin/geos-config --libs 2>/dev/null)
+    else
+      ifneq "$(wildcard /usr/bin/geos-config)" ""
+        GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
+      endif
     endif
   endif
   REQUIRED_LIBS += $(GEOS_LIBS)
