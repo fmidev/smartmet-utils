@@ -41,7 +41,7 @@ plugindir ?= $(datadir)/smartmet/plugins
 
 # pkg-config extra directories for use with PGDG RPM packages
 
-SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 33, /usr/sqlite$(ver)/lib/pkgconfig))
+SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 330, /usr/sqlite$(ver)/lib/pkgconfig))
 SPATIALITE_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 43 50, /usr/libspatialite$(ver)/lib/pkgconfig))
 PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 82 81 72, /usr/proj$(ver)/lib/pkgconfig))
 
