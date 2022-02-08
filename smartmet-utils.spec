@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 22.2.8
-Release: 2%{?dist}.fmi
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -51,6 +51,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Feb  8 2022 Andris Pavenis <andris.pavenis@fmi.fi> 22.2.8-3.fmi
+- Fixed typo
+
 * Tue Feb  8 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.2.8-2.fmi
 - Fix sqlite3 and proj detection in makefile.inc
 
