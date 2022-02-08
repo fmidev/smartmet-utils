@@ -43,7 +43,7 @@ plugindir ?= $(datadir)/smartmet/plugins
 
 SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 330, /usr/sqlite$(ver)/lib/pkgconfig))
 SPATIALITE_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 43 50, /usr/libspatialite$(ver)/lib/pkgconfig))
-PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 82 81 72, /usr/proj$(ver)/lib/pkgconfig))
+PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 82 81, /usr/proj$(ver)/lib/pkgconfig))
 
 # Compiler flags
 
@@ -332,8 +332,15 @@ ifneq ($(filter xerces-c,$(REQUIRES)),)
 endif
 
 ifneq ($(filter proj,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out proj, $(REQUIRES_LEFT))
   INCLUDES += $(shell PKG_CONFIG_PATH="$(PROJ_PKG_SEARCH)" pkg-config --cflags proj 2>/dev/null)
   PROJ_LIBS := $(shell PKG_CONFIG_PATH="$(PROJ_PKG_SEARCH)" pkg-config --libs proj 2>/dev/null)
+  ifeq ($(PROJ_LIBS),)
+    ifneq ($(wildcard /usr/proj72/lib/libproj*),)
+      INCLUDES += -I/usr/proj72/include
+      PROJ_LIBS += -L/usr/proj72/lib
+    endif
+  endif
   ifeq ($(PROJ_LIBS),)
     REQUIRES_MISSING += proj
   endif
