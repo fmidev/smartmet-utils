@@ -314,7 +314,7 @@ ifneq ($(filter sqlite3,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out sqlite3, $(REQUIRES_LEFT))
   # Search in /usr/sqlite330 at first
   SQLITE3_LIBS := $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --libs sqlite3)
-  INCLUDE += $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --cflags sqlite3)
+  INCLUDES += $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --cflags sqlite3)
   ifeq ($(SQLITE3_LIBS),)
     REQUIRES_MISSING += sqlite3
   endif
