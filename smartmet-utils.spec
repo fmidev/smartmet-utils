@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 22.1.20
+Version: 22.2.8
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -51,6 +51,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Feb  8 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.2.8-1.fmi
+- Reafactor makefile.inc and add support for libspatialite, sqlite3 and proj
+
 * Thu Jan 20 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.1.20-1.fmi
 - Support PGDG gdal-3.4, geos-3.10 ja proj-8.2 packages
 
