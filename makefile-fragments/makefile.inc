@@ -79,7 +79,7 @@ FLAGS += -std=$(CXX_STD) -fdiagnostics-color=$(GCC_DIAG_COLOR) \
 	-Wno-unused-parameter \
         -Wno-unknown-warning-option
 
-FLAGS_DEBUG = -Og -Werror -Wpedantic -Wundef
+FLAGS_DEBUG = -Og -Wpedantic -Wundef
 FLAGS_RELEASE = $(OPTIMIZE) -Wuninitialized -DNDEBUG
 FLAGS_PROFILE = $(OPTIMIZE) -g -pg -DNDEBUG
 PACKAGES_MISSING =
