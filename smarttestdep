@@ -1,0 +1,25 @@
+#! /bin/sh
+
+set -x
+
+if dnf builddep --version 2>&1 >/dev/null ; then
+   builddep="dnf builddep"
+else
+   builddep="yum-builddep"
+fi
+
+tmpdir=$(mktemp -d)
+n=0
+test_specs=
+for spec_file in *.spec; do
+    n=$(($n+1))
+    sed -e 's|^\(Requires:\)|#\1|' \
+        -e 's|^\(BuildRequires:\)|#\1|' \
+        -e 's|^#\TestRequires:|BuildRequires:|' \
+    $spec_file >$tmpdir/$n.spec
+    test_spec="$test_spec $tmpdir/$n.spec"
+done
+sudo $builddep $test_spec
+rm -fv $(for i in $(seq 1 $n); do echo $tmpdir/$i.spec; done)
+rmdir $tmpdir
+
