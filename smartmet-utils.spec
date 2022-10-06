@@ -19,7 +19,7 @@ FMI SmartSet server related utils
 rm -rf $RPM_BUILD_ROOT
 
 %setup -q -n %{BINNAME}
- 
+
 %build
 
 %install
@@ -35,6 +35,7 @@ Provides: smartmkrelease
 Provides: smartmktag
 Provides: smartmet-makefile-inc
 Requires: make bash perl
+Requires: ImageMagick
 
 %description devel
 FMI SmartSet server development related utils and files
