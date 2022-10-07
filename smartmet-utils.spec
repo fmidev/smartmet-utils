@@ -36,6 +36,7 @@ Provides: smartmktag
 Provides: smartmet-makefile-inc
 Requires: make bash perl
 Requires: ImageMagick
+#TestRequires: bc
 
 %description devel
 FMI SmartSet server development related utils and files
