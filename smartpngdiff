@@ -15,9 +15,11 @@ OK_PNG=$1
 PNG=$2
 DIFF_PNG=$3
 
-# Detect WGS84 branch
-grep --quiet "#define WGS84 1" /usr/include/smartmet/newbase/NFmiGlobals.h
-wgs84=$(expr $? == 0)
+if test "$IGNORE_WGS84" != "Y" ; then
+    # Detect WGS84 branch
+    grep --quiet "#define WGS84 1" /usr/include/smartmet/newbase/NFmiGlobals.h
+    wgs84=$(expr $? == 0)
+fi
 
 # And use WGS84 result if it exists in WGS84 branch
 
