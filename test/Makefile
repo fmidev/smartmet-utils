@@ -2,7 +2,13 @@ GCC_VER := gcc (GCC) 8.4.1 20200928 (Red Hat 8.4.1-1)
 GCC_VER_OLD := gcc (GCC) 4.8.5 20150623 (Red Hat 4.8.5-44)
 CLANG_VER := clang version 11.0.0 (Red Hat 11.0.0-1.module+el8.4.0+8598+a071fcd5)
 
-test:   test-pngcomp
+test:
+	@echo =====================================================================
+	@echo = Tests below contains also error condition tests                   =
+	@echo = One should get error messages from these tests,                   =
+	@echo = but only final result of test run matters                         =
+	@echo =====================================================================
+	$(MAKE) test-pngcomp
 	if $(MAKE) -f Makefile.test all CXX=./dummy841.sh REQUIRES=missing-require-test ; then false; else true; fi
 	if $(MAKE) -f Makefile.test debug CXX=./dummy841.sh REQUIRES=missing-require-test ; then false; else true; fi
 	if $(MAKE) -f Makefile.test rpm CXX=./dummy841.sh REQUIRES=missing-require-test ; then false; else true; fi
