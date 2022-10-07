@@ -6,7 +6,8 @@ PROG = \
 	smartbuildrev \
 	smartbuildcfg \
 	smartmkrelease \
-	smartmktag
+	smartmktag \
+	smartpngdiff
 
 .PHONY: rpm
 
