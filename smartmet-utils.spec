@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 22.12.14
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -56,6 +56,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Dec 14 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.12.14-2.fmi
+- New script smartmkciconfig (iteration 2)
+
 * Wed Dec 14 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.12.14-1.fmi
 - Add PRL script smartmkcoconfig
 
