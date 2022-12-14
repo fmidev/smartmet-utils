@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 22.10.7
+Version: 22.12.14
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -55,6 +55,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Dec 14 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.12.14-1.fmi
+- Add PRL script smartmkcoconfig
+
 * Fri Oct  7 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.10.7-1.fmi
 - Add smartpngdiff for use for image comparition in tests
 
