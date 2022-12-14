@@ -1,10 +1,11 @@
 #! /usr/bin/perl
 
 use strict;
+use File::Compare;
 
-if ( ! -d ".circleci" ) {
-    print "Skipping Circle-CI config generation as .circleci directory not found";
-    exit 0;
+if ( ! -f ".circleci/config.yml" ) {
+    print "Skipping Circle-CI config generation as .circleci/config.yml not found\n";
+    exit 1;
 }
 
 @::versions = ();
@@ -18,140 +19,163 @@ if ( -f "$::home/.ci-rhel-versions" ) {
     @::versions = (8);
 }
 
-open OUTPUT, ">", ".circleci/config.yml"
-    or die "Failed to open .circleci/config.yml for writing: $!";
+my $output;
+open $output, ">", ".circleci/config.yml.new"
+    or die "Failed to open .circleci/config.yml.new for writing: $!";
 
 print "Generating Circle-CI configuration\n";
 
-print OUTPUT "version: 2.1\n";
-print OUTPUT "jobs:\n";
+print $output "version: 2.1\n";
+print $output "jobs:\n";
 
 for my $ver (@::versions) {
     print "Generated step build-rhel$ver\n";
 
-    print OUTPUT "  build-rhel$ver:\n";
-    print OUTPUT "    docker:\n";
-    print OUTPUT "      - image: fmidev/smartmet-cibase-$ver:latest\n";
-    print OUTPUT "    resource_class: xlarge\n";
-    print OUTPUT "    environment:\n";
-    print OUTPUT "      RPM_BUILD_NCPUS: 8\n";
-    print OUTPUT "    steps:\n";
-    print OUTPUT "      - checkout\n";
-    print OUTPUT "      - run:\n";
-    print OUTPUT "          name: Install build dependencies\n";
-    print OUTPUT "          command: ci-build deps\n";
-    print OUTPUT "      - run:\n";
-    print OUTPUT "          name: Build RPM\n";
-    print OUTPUT "          command: ci-build rpm\n";
-    print OUTPUT "      - persist_to_workspace:\n";
-    print OUTPUT "          root: /dist\n";
-    print OUTPUT "          paths: ./*.rpm\n";
+    print $output "  build-rhel$ver:\n";
+    print $output "    docker:\n";
+    print $output "      - image: fmidev/smartmet-cibase-$ver:latest\n";
+    print $output "    resource_class: xlarge\n";
+    print $output "    environment:\n";
+    print $output "      RPM_BUILD_NCPUS: 8\n";
+    print $output "    steps:\n";
+    print $output "      - checkout\n";
+    print $output "      - run:\n";
+    print $output "          name: Install build dependencies\n";
+    print $output "          command: ci-build deps\n";
+    print $output "      - run:\n";
+    print $output "          name: Build RPM\n";
+    print $output "          command: ci-build rpm\n";
+    print $output "      - persist_to_workspace:\n";
+    print $output "          root: /dist\n";
+    print $output "          paths: ./*.rpm\n";
 
     if ( ! -f ".circleci/disable-tests-in-ci" ) {
         print "Generated step test-rhel$ver\n";
 
-        print OUTPUT "  test-rhel$ver:\n";
-        print OUTPUT "    docker:\n";
-        print OUTPUT "      - image: fmidev/smartmet-cibase-$ver:latest\n";
-        print OUTPUT "    resource_class: xlarge\n";
-        print OUTPUT "    environment:\n";
-        print OUTPUT "      RPM_BUILD_NCPUS: 8\n";
-        print OUTPUT "    steps:\n";
-        print OUTPUT "      - checkout\n";
-        print OUTPUT "      - attach_workspace:\n";
-        print OUTPUT "          at: /dist\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Installation test\n";
-        print OUTPUT "          command: ci-build dummy ; sudo yum install -y /dist/*.rpm\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Test prepare\n";
-        print OUTPUT "          command: ci-build testprep\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Test\n";
-        print OUTPUT "          command: ci-build test\n";
-        print OUTPUT "      - store_artifacts:\n";
-        print OUTPUT "          path: /dist\n";
-        print OUTPUT "          destination: dist/\n";
+        print $output "  test-rhel$ver:\n";
+        print $output "    docker:\n";
+        print $output "      - image: fmidev/smartmet-cibase-$ver:latest\n";
+        print $output "    resource_class: xlarge\n";
+        print $output "    environment:\n";
+        print $output "      RPM_BUILD_NCPUS: 8\n";
+        print $output "    steps:\n";
+        print $output "      - checkout\n";
+        print $output "      - attach_workspace:\n";
+        print $output "          at: /dist\n";
+        print $output "      - run:\n";
+        print $output "          name: Installation test\n";
+        print $output "          command: ci-build dummy ; sudo yum install -y /dist/*.rpm\n";
+        print $output "      - run:\n";
+        print $output "          name: Test prepare\n";
+        print $output "          command: ci-build testprep\n";
+        print $output "      - run:\n";
+        print $output "          name: Test\n";
+        print $output "          command: ci-build test\n";
+        print $output "      - store_artifacts:\n";
+        print $output "          path: /dist\n";
+        print $output "          destination: dist/\n";
     }
 
     # This is currently for WFS only
     if ( -f ".circleci/include-unit-test-step" ) {
         print "Generated step unit-test-rhel$ver\n";
 
-        print OUTPUT "  unit-test-rhel$ver:\n";
-        print OUTPUT "    docker:\n";
-        print OUTPUT "      - image: fmidev/smartmet-cibase-$ver:latest\n";
-        print OUTPUT "    resource_class: xlarge\n";
-        print OUTPUT "    environment:\n";
-        print OUTPUT "      RPM_BUILD_NCPUS: 8\n";
-        print OUTPUT "    steps:\n";
-        print OUTPUT "      - checkout\n";
-        print OUTPUT "      - attach_workspace:\n";
-        print OUTPUT "          at: /dist\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Install build dependencies\n";
-        print OUTPUT "          command: ci-build deps\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Installation test\n";
-        print OUTPUT "          command: ci-build dummy ; sudo yum install -y /dist/*.rpm\n";
-        print OUTPUT "      - run:\n";
-        print OUTPUT "          name: Unit tests\n";
-        print OUTPUT "          command: make check-installed CXX=clang++\n";
-        print OUTPUT "      - store_artifacts:\n";
-        print OUTPUT "          path: /dist\n";
-        print OUTPUT "          destination: dist/\n";
+        print $output "  unit-test-rhel$ver:\n";
+        print $output "    docker:\n";
+        print $output "      - image: fmidev/smartmet-cibase-$ver:latest\n";
+        print $output "    resource_class: xlarge\n";
+        print $output "    environment:\n";
+        print $output "      RPM_BUILD_NCPUS: 8\n";
+        print $output "    steps:\n";
+        print $output "      - checkout\n";
+        print $output "      - attach_workspace:\n";
+        print $output "          at: /dist\n";
+        print $output "      - run:\n";
+        print $output "          name: Install build dependencies\n";
+        print $output "          command: ci-build deps\n";
+        print $output "      - run:\n";
+        print $output "          name: Installation test\n";
+        print $output "          command: ci-build dummy ; sudo yum install -y /dist/*.rpm\n";
+        print $output "      - run:\n";
+        print $output "          name: Unit tests\n";
+        print $output "          command: make check-installed CXX=clang++\n";
+        print $output "      - store_artifacts:\n";
+        print $output "          path: /dist\n";
+        print $output "          destination: dist/\n";
     }
 
     print "Generated step upload-rhel$ver\n";
 
-    print OUTPUT "  upload-rhel$ver:\n";
-    print OUTPUT "    docker:\n";
-    print OUTPUT "      - image: fmidev/smartmet-cibase-$ver:latest\n";
-    print OUTPUT "    steps:\n";
-    print OUTPUT "      - attach_workspace:\n";
-    print OUTPUT "          at: /dist\n";
-    print OUTPUT "      - run:\n";
-    print OUTPUT "          name: Installing AWS CLI\n";
-    print OUTPUT "          working_directory: /\n";
-    print OUTPUT "          command: |\n";
-    print OUTPUT "            sudo yum -y install dnf\n";
-    print OUTPUT "            sudo dnf -y install python3-pip\n";
-    print OUTPUT "            pip3 install awscli --upgrade --user\n";
-    print OUTPUT "      - run:\n";
-    print OUTPUT "          name: Sync artifacts to S3\n";
-    print OUTPUT "          command: |\n";
-    print OUTPUT "            export PATH=\$PATH:~/.local/bin\n";
-    print OUTPUT "            aws s3 cp /dist s3://fmi-smartmet-cicd-beta/centos$ver/ --recursive\n";
+    print $output "  upload-rhel$ver:\n";
+    print $output "    docker:\n";
+    print $output "      - image: fmidev/smartmet-cibase-$ver:latest\n";
+    print $output "    steps:\n";
+    print $output "      - attach_workspace:\n";
+    print $output "          at: /dist\n";
+    print $output "      - run:\n";
+    print $output "          name: Installing AWS CLI\n";
+    print $output "          working_directory: /\n";
+    print $output "          command: |\n";
+    print $output "            sudo yum -y install dnf\n";
+    print $output "            sudo dnf -y install python3-pip\n";
+    print $output "            pip3 install awscli --upgrade --user\n";
+    print $output "      - run:\n";
+    print $output "          name: Sync artifacts to S3\n";
+    print $output "          command: |\n";
+    print $output "            export PATH=\$PATH:~/.local/bin\n";
+    print $output "            aws s3 cp /dist s3://fmi-smartmet-cicd-beta/centos$ver/ --recursive\n";
 }
 
-print OUTPUT "workflows:\n";
-print OUTPUT "  version: 2.1\n";
-print OUTPUT "  build-test:\n";
-print OUTPUT "    jobs:\n";
+print $output "workflows:\n";
+print $output "  version: 2.1\n";
+print $output "  build-test:\n";
+print $output "    jobs:\n";
 
 for my $ver (@::versions) {
-    print OUTPUT "      - build-rhel$ver\n";
+    print $output "      - build-rhel$ver\n";
 }
 
 for my $ver (@::versions) {
     if ( ! -f ".circleci/disable-tests-in-ci" ) {
-        print OUTPUT "      - test-rhel$ver:\n";
-        print OUTPUT "          requires:\n";
-        print OUTPUT "            - build-rhel$ver\n";
+        print $output "      - test-rhel$ver:\n";
+        print $output "          requires:\n";
+        print $output "            - build-rhel$ver\n";
     }
     if ( -f ".circleci/include-unit-test-step" ) {
-        print OUTPUT "      - unit-test-rhel$ver:\n";
-        print OUTPUT "          requires:\n";
-        print OUTPUT "            - build-rhel$ver\n";
+        print $output "      - unit-test-rhel$ver:\n";
+        print $output "          requires:\n";
+        print $output "            - build-rhel$ver\n";
     }
 }
 
 for my $ver (@::versions) {
-    print OUTPUT "      - upload-rhel$ver:\n";
-    print OUTPUT "          context: fmi-global\n";
-    print OUTPUT "          requires:\n";
-    print OUTPUT "            - test-rhel$ver\n";
+    print $output "      - upload-rhel$ver:\n";
+    print $output "          context: fmi-global\n";
+    print $output "          requires:\n";
+    if ( -f ".circleci/disable-tests-in-ci" ) {
+        print $output "            - build-rhel$ver\n";
+    } else {
+        print $output "            - test-rhel$ver\n";
+    }
     if ( -f ".circleci/include-unit-test-step" ) {
-        print OUTPUT "            - unit-test-rhel$ver\n";
+        print $output "            - unit-test-rhel$ver\n";
     }
 }
+
+close $output;
+
+if (compare(".circleci/config.yml", ".circleci/config.yml.new") == 0) {
+    print "No changed detected.\n";
+    unlink(".circleci/config.yml.new");
+} else {
+    if ( -f ".circleci/config.yml~" ) {
+        unlink(".circleci/config.yml~");
+    }
+    rename(".circleci/config.yml", ".circleci/config.yml~") or
+        die "rename .circleci/config.yml -> .circleci/config.yml~: $!";
+    rename(".circleci/config.yml.new", ".circleci/config.yml") or
+        die "rename .circleci/config.yml.new -> .circleci/config.yml: $!";
+    print ".circleci/config.yml updated\n";
+}
+
+exit(0);
