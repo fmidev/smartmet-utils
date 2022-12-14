@@ -62,7 +62,7 @@ workflows:
   build-test:
     jobs:
       - build-rhel8
-      - test-rhel8
+      - test-rhel8:
           requires:
             - build-rhel8
       - upload-rhel8:

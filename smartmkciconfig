@@ -135,7 +135,7 @@ for my $ver (@::versions) {
 
 for my $ver (@::versions) {
     if ( ! -f ".circleci/disable-tests-in-ci" ) {
-        print OUTPUT "      - test-rhel$ver\n";
+        print OUTPUT "      - test-rhel$ver:\n";
         print OUTPUT "          requires:\n";
         print OUTPUT "            - build-rhel$ver\n";
     }
