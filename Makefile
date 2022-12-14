@@ -5,6 +5,7 @@ include makefile-fragments/makefile.inc
 PROG = \
 	smartbuildrev \
 	smartbuildcfg \
+	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
 	smartpngdiff
