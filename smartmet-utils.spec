@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 22.12.14
-Release: 2%{?dist}.fmi
+Version: 23.1.19
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -56,6 +56,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Thu Jan 19 2023 Mika Heiskanen <mika.heiskanen@fmi.fi> - 23.1.19-1.fmi
+- Support libwebp13
+
 * Wed Dec 14 2022 Andris Pavēnis <andris.pavenis@fmi.fi> 22.12.14-2.fmi
 - New script smartmkciconfig (iteration 2)
 

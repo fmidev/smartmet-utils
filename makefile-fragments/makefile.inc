@@ -347,6 +347,17 @@ ifneq ($(filter proj,$(REQUIRES)),)
   REQUIRED_LIBS += $(PROJ_LIBS)
 endif
 
+ifneq ($(filter webp,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out webp, $(REQUIRES_LEFT))
+  ifneq "$(wildcard /usr/include/webp13)" ""
+    INCLUDES += -isystem /usr/include/webp13
+    WEBP_LIBS = -Wl,-rpath=$(PREFIX)/lib64/webp13 -L$(PREFIX)/lib64/webp13 -lwebp -lwebpmux
+  else
+    WEBP_LIBS = -lwebp -webpmux
+  endif
+  REQUIRED_LIBS += $(WEBP_LIBS)
+endif
+
 # For testing only
 ifneq ($(filter missing-require-test,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out missing-require-test, $(REQUIRES_LEFT))
