@@ -351,9 +351,9 @@ ifneq ($(filter webp,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out webp, $(REQUIRES_LEFT))
   ifneq "$(wildcard /usr/include/webp13)" ""
     INCLUDES += -isystem /usr/include/webp13
-    WEBP_LIBS = -Wl,-rpath=$(PREFIX)/lib64/webp13 -L$(PREFIX)/lib64/webp13 -lwebp -lwebpmux -lsharpuyv
+    WEBP_LIBS = -Wl,-rpath=$(PREFIX)/lib64/webp13 -L$(PREFIX)/lib64/webp13 -lwebp -lwebpmux -lsharpyuv
   else
-    WEBP_LIBS = -lwebp -lwebpmux -lsharpuyv
+    WEBP_LIBS = -lwebp -lwebpmux -lsharpyuv
   endif
   REQUIRED_LIBS += $(WEBP_LIBS)
 endif
