@@ -358,6 +358,17 @@ ifneq ($(filter webp,$(REQUIRES)),)
   REQUIRED_LIBS += $(WEBP_LIBS)
 endif
 
+ifneq ($(filter libpq,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out libpq, $(REQUIRES_LEFT))
+  ifneq "$(wildcard /usr/pgsql-13/include)" ""
+    INCLUDES += -isystem /usr/pgsql-13/include
+    PQ_LIBS = -Wl,-rpath=$(PREFIX)/pgsql-13/lib -L$(PREFIX)/pgsql-13/lib -lpq
+  else
+    PQ_LIBS = -lpq
+  endif
+  REQUIRED_LIBS += $(PQ_LIBS)
+endif
+
 # For testing only
 ifneq ($(filter missing-require-test,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out missing-require-test, $(REQUIRES_LEFT))
