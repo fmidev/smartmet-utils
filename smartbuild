@@ -1,0 +1,930 @@
+#! /usr/bin/perl
+
+#
+#  Build smartmet-* packages
+#  - checks presence of installed packages and ones found in configured RPM repos
+#  - large amount of disk space (about 1.5GB) is required for bare GIT repositories
+#  - additionally disk space for build process is required
+#  - sudo access is required for package installation
+#
+
+use strict;
+use warnings;
+use Carp::Always;
+use Cwd;
+use File::Basename;
+use File::Copy qw/ copy move /;
+use File::Path qw/ make_path remove_tree /;
+use File::Temp qw/ tempfile tempdir /;
+use JSON::PP;
+use Getopt::Long;
+
+use Data::Dumper;
+
+################################################################################################
+
+%::default_modules = (
+    "smartmet-plugin-admin"                 => { "branch" => "", "spec" => ""},
+    "smartmet-plugin-autocomplete"          => {},
+    "smartmet-plugin-backend"               => {},
+    "smartmet-plugin-cross_section"         => {},
+    "smartmet-plugin-download"              => {},
+    "smartmet-plugin-edr"                   => {},
+    "smartmet-plugin-frontend"              => {},
+    "smartmet-plugin-grid-admin"            => {},
+    "smartmet-plugin-grid-gui"              => {},
+    "smartmet-plugin-meta"                  => {},
+    "smartmet-plugin-textgen"               => {},
+    "smartmet-plugin-timeseries"            => {},
+    "smartmet-plugin-trajectory"            => {},
+    "smartmet-plugin-wfs"                   => {},
+    "smartmet-plugin-wms"                   => {},
+    "smartmet-server"                       => {},
+    "smartmet-qdcontour"                    => {},
+    "smartmet-qdcontour2"                   => {},
+    "smartmet-qdtools"                      => {},
+    "smartmet-shapetools"                   => {},
+    "smartmet-frontier"                     => {},
+    "smartmet-tools-grid"                   => {},
+    "smartmet-textgenapps"                  => {},
+    );
+
+%::default_ignore = (
+    "smartmet-fonts"                        => 1,
+    "smartmet-test-data"                    => 1,
+    "smartmet-qdtools-test-data"            => 1,
+    "smartmet-engine-grid-test"             => 1,
+    "smartmet-SFCGAL-libs"                  => 1,
+    "smartmet-library-spine-plugin-test"    => 1,
+    "smartmet-trajectory-formats"           => 1,
+    "smartmet-trajectory"                   => 1
+    );
+
+# Specify mapping to GitHub repository names if not the same as module name
+%::default_github_name_map = (
+    );
+
+################################################################################################
+
+$::top = Cwd::abs_path(getcwd);
+$::workspace = "$::top/workspace";
+$::mirror = "$::workspace/mirror";
+$::base_url='git@github.com:fmidev';
+$::export_dir = "$::workspace/export";
+
+################################################################################################
+
+my @make_options;
+
+################################################################################################
+
+%::modules = ();
+
+# Installed and available versions
+%::available = ();
+%::installed = ();
+%::local_installs = ();
+
+$::pkg_man = undef;
+$::debug_dir = undef;
+$::x86_64_dir = undef;
+$::builddep = undef;
+
+$::num_cpus = 1;
+
+sub uniq
+{
+    my @args = @_;
+    my %tmp;
+    foreach (@args) {
+        $tmp{$_} = 1;
+    }
+    return sort(keys %tmp);
+}
+
+sub get_installed_versions
+{
+    my $input;
+    open($input, "rpm -qa 'smartmet*' |") or die "Failed to run rpm -qa";
+    while (<$input>) {
+        chomp;
+        if (m/-(?:debuginfo|debugsource)-/) {
+            next;
+        } elsif (m/^(.*?)-([\d\.]*)-(\d*)\.el\d(\.fmi|)?\.(?:x86_64|noarch)/) {
+            $::installed{$1} = "$2-$3";
+        }
+    }
+    close $input;
+
+    #print Dumper(\%::installed);
+}
+
+sub get_available_versions
+{
+    my $input;
+
+    my $cmd = "$::pkg_man --disablerepo='*' --enablerepo='smartmet*' -q list 'smartmet*'";
+    open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
+
+    my $phase = 0;
+
+    while (<$input>) {
+        chomp;
+        if (m/^smartmet/) {
+            next if (m/-(?:debugsource|debuginfo)\./);
+            s/-devel\././;
+            my @parts = split;
+            $parts[0] =~ s/\.(?:x86_64|noarch)$//;
+            $parts[1] =~ s/\.el8\.fmi$//;
+            if ($phase == 1) {
+#                $::installed{$parts[0]} = $parts[1];
+            } elsif ($phase == 2) {
+                $::available{$parts[0]} = $parts[1];
+            }
+            if ($parts[2] eq '@@commandline') {
+                $::local_installs{$parts[0]} = 1;
+            } else {
+                $::local_installs{$parts[0]} = 0;
+            }
+        } elsif (m/^Installed/) {
+            $phase = 1;
+        } elsif (m/^Available/) {
+            $phase = 2;
+        }
+    }
+    close($input);
+
+    #print Dumper(\%::available);
+}
+
+sub get_system_info
+{
+    $::rhel_ver = int(`rpm --eval '%{rhel}'`);
+    print "RHEL version: '$::rhel_ver'\n";
+    if ($::rhel_ver == 7) {
+        $::pkg_man = "yum";
+        $::debug_dir = "rhel/7/beta";
+        $::x86_64_dir = "rhel/7/beta";
+        $::builddep = "yum-builddep";
+    } elsif ($::rhel_ver == 8) {
+        $::pkg_man = "dnf";
+        $::debug_dir = "rhel/8/beta";
+        $::x86_64_dir = "rhel/8/beta";
+        $::builddep = "dnf builddep";
+    } elsif ($::rhel_ver == 9) {
+        $::pkg_man = "dnf";
+        $::debug_dir = "rhel/9/debug";
+        $::x86_64_dir = "rhel/9/x86_64";
+        $::builddep = "dnf builddep";
+    } elsif ($::settings->{update_only}) {
+    } else {
+        die "Unsupported version '$::rhel_ver'";
+    }
+
+    my $built_rpm_dir = `rpm --eval '%{_rpmdir}'`;
+    chomp($built_rpm_dir);
+    $::noarch_rpm_dir = "$built_rpm_dir/noarch";
+    $::x86_64_rpm_dir = "$built_rpm_dir/x86_64";
+
+    my $input;
+    if (open ($input, "/proc/cpuinfo")) {
+        my $num_cpus = 0;
+        while (<$input>) {
+            if (m/^cpu\sMHz\s/) {
+                $num_cpus ++;
+            }
+        }
+        if ($num_cpus == 0) {
+            $num_cpus = 1;
+        }
+
+        $::num_cpus =  $num_cpus;
+    }
+
+    get_installed_versions;
+    get_available_versions;
+}
+
+sub version_to_num($)
+{
+    my $ver = shift;
+    my $result = 0;
+    if ($ver =~ m/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})-(\d{1,3})$/) {
+        $result = sprintf("%02d%02d%02d%03d", $1, $2, $3, $4);
+    }
+    return $result;
+}
+
+sub get_module_name($)
+{
+    my $module = shift;
+    # Remove .git and parts of URL if they accidentally got into module
+    $module =~ s%[.]git$%%;
+    $module =~ s%^.*/%%;
+    return $module;
+}
+
+sub get_mirror_dir($)
+{
+    my $module = get_module_name(shift);
+    return "$::mirror/$module.git";
+}
+
+sub get_export_dir($)
+{
+    my $module = get_module_name(shift);
+    if ($::config->{modules}->{$module}->{private}) {
+        return "$::export_dir/smartmet-private";
+    } else {
+        return "$::export_dir/smartmet-open";
+    }
+}
+
+sub export_rpms($)
+{
+    my $module = get_module_name(shift);
+    my @rpms = (
+        glob("$::noarch_rpm_dir/$module-*.rpm"),
+        glob("$::x86_64_rpm_dir/$module-*.rpm"));
+    my $export_to = get_export_dir($module);
+    foreach my $rpm (@rpms) {
+        my $dest;
+        my $fn = basename($rpm);
+        if ($rpm =~ m/(?:_debuginfo|debugsource)/) {
+            $dest = "$export_to/$::debug_dir";
+        } else {
+            $dest = "$export_to/$::x86_64_dir";
+        }
+
+        make_path($dest);
+        print "MOVE: $rpm ==> $dest/$fn";
+        if ( -f "$dest/$fn" ) {
+            remove("$dest/$fn");
+        }
+        move($rpm, "$dest/$fn") or die "Filed to move: $!";
+    }
+}
+
+sub get_repo_name($)
+{
+    my $module = get_module_name(shift);
+    if (defined $::default_github_name_map{$module}) {
+        return $::default_github_name_map{$module};
+    } else {
+        return $module;
+    }
+}
+
+sub update_local_mirror($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = "$::mirror/$module.git";
+
+    mkdir("$::workspace", 0700) unless (-d "$::workspace" );
+    mkdir("$::mirror", 0700) unless(-d "$::mirror" );
+
+    if (not $::settings->{local_only}) {
+        if ( -d $mirror_dir ) {
+            system("git -C $mirror_dir fetch") == 0 or die "Failed to fetch updates for $mirror_dir";
+        } else {
+            my $url = "$::base_url/".get_repo_name($module);
+            print("Cloning: $url ==> $mirror_dir\n");
+            system("git -C $::mirror clone --bare --mirror $url $mirror_dir") == 0
+                or die "Failed to clone $url";
+        }
+    }
+
+    $::modules{$module} = {};
+    $::modules{$module} -> {"mirror"} = $mirror_dir;
+}
+
+sub extract_spec_version($$$)
+{
+    my ($input, $version, $release);
+    my $dir = shift;
+    my $fn = shift;
+    my $rev = shift;
+    if (not $::settings->{release_rpms} and not $::settings->{release}) {
+        $rev = 'master';
+    }
+    open($input, "git -C $dir show $rev:$fn |")
+         or die "Failed to run git -C $dir show $rev:$fn: $!";
+    while (<$input>) {
+        chomp;
+        if (m/\s*Version:/) {
+            s/\s*Version:\s*//;
+            s/\s*$//;
+            $version = $_;
+        } elsif (m/\s*Release:/) {
+            s/\s*Release:\s*//;
+            s/\%.*//;
+            $release = $_;
+        }
+    }
+    close $input;
+
+    if (defined($version) and defined($release)) {
+        return "${version}-${release}";
+    } else {
+        return undef;
+    }
+}
+
+sub get_revision_and_version
+{
+    my $input;
+
+    my $dir = shift;
+    my $count = shift;
+    if ($count == 0) {
+	$count = 10;
+    }
+
+    my @spec_files;
+    open ($input, "git -C $dir show HEAD:|")
+        or die "Failed: git -C $dir show HEAD:";
+    while (<$input>) {
+        chomp;
+        if (m/\.spec$/) {
+            push (@spec_files, $_);
+        }
+    }
+    close ($input);
+
+    scalar @spec_files == 1 or die "Exactly one SPEC file expected - got (".join(" ", @spec_files).")";
+
+    my $fn = basename($spec_files[0]);
+    open($input, "git -C $dir log -$count -- $fn |")
+	or die "Failed to get git history of $fn: $!";
+
+    my $version = extract_spec_version($dir, $fn, 'HEAD');
+
+    if (not $::settings{release_rpms} and not $::settings{release}) {
+        return ('HEAD', $version, $spec_files[0]);
+    } else {
+        if (defined($version)) {
+            # Check wheter GIT tag with name equal to version is present and use it if found
+            if (system("git -C $dir describe --tags tags/$version") == 0) {
+                print "Git tag $version found. Using it as revision\n";
+                return ("tags/$version", $version, $spec_files[0]);
+            }
+
+            open($input, "git -C $dir log -$count $fn |")
+                or die "Failed to get git history of $fn: $!";
+            my $rev;
+            while (<$input>) {
+                if (m/^commit/) {
+                    print;
+                    chomp;
+                    s/^commit\s+//;
+                    my $curr_rev = $_;
+                    my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
+                    if (defined($curr_ver) and ($curr_ver ne $version)) {
+                        return ($curr_rev, $version, $spec_files[0]);
+                    }
+                }
+            }
+
+            die "Failed to locate GIT revision for version $version";
+	} else {
+            die "Failed to get version";
+        }
+    }
+    close $input;
+}
+
+sub extract_requires($$$)
+{
+    my $module = get_module_name(shift);
+    my $spec = shift;
+    my $revision = shift;
+
+    my $mirror = get_mirror_dir($module);
+
+    my $input;
+    my $cmd = "git -C $mirror show $revision:$spec";
+    open($input, "$cmd |") or die "Failed: $cmd\n";
+
+    my @requires;
+    my @build_requires;
+    my @test_requires;
+
+    while (<$input>) {
+        if (m/\s*?(Requires|BuildRequires|#TestRequires):\s*(.*)$/) {
+            my $type = $1;
+            my $data = $2;
+            $data =~ s/[\s=><].*$//;
+            $data =~ s/-devel$//;
+            if ($data =~ m/^smartmet-/) {
+                if (not defined $::default_ignore{$data}) {
+                    if ($type eq "Requires") {
+                        push (@requires, $data);
+                    } elsif ($type eq "BuildRequires") {
+                        push (@build_requires, $data);
+                    } elsif ($type eq "#TestRequires") {
+                        push (@test_requires, $data);
+                    }
+                }
+            }
+        }
+    }
+
+    close ($input);
+
+    #$::modules{$module}->{"requires"} = \uniq(sort(@requires));
+    @requires = uniq @requires;
+    @build_requires = uniq @build_requires;
+    @test_requires = uniq @test_requires;
+    $::modules{$module}->{"requires"} = \@requires;
+    $::modules{$module}->{"build_requires"} = \@build_requires;
+    $::modules{$module}->{"test_requires"} = \@test_requires;
+}
+
+sub get_last_release_info($)
+{
+    my $module = get_module_name(shift);
+    my ($rev, $version, $spec) = get_revision_and_version($::modules{$module}->{"mirror"}, 10);
+    my $version_id = version_to_num($version);
+    $::modules{$module}->{"version"} =  $version;
+    if (defined($version_id)) {
+        $::modules{$module}->{"version_id"} =  version_to_num($version);
+    }
+    $::modules{$module}->{"git_rev"} =  $rev;
+    $::modules{$module}->{"spec_file"} =  $spec;
+
+    extract_requires($::modules{$module}->{"mirror"}, $spec, $rev);
+}
+
+sub check_available($)
+{
+    my $module = get_module_name(shift);
+
+    if (defined($::available{$module})) {
+        my $id1 = version_to_num($::available{$module});
+        my $id2 = version_to_num($::modules{$module}->{version});
+        if (defined($id1) and defined($id2) and ($id1 > $id2)) {
+            die "Available version $::available($module) of $module is newer than one provided".
+                " by GIT repository ($::modules{$module}->{version})";
+        }
+    }
+
+    if (defined($::available{$module}) and ($::available{$module} eq $::modules{$module}->{version})) {
+        my $cmd;
+        if (defined($::installed{$module})) {
+            print "Current version $::modules{$module}->{version} found in repository --> upgrading to it\n";
+            $cmd = "sudo $::pkg_man -y upgrade $module".'*';
+        } else {
+            print "Current version $::modules{$module}->{version} found in repository --> installing it\n";
+            $cmd = "sudo $::pkg_man -y install $module".'*';
+        }
+        print "Executing: $cmd\n";
+        system($cmd) == 0 or die "Failed: $!";
+        $::installed{$module} = $::available{$module};
+    }
+}
+
+sub build_and_install_module($)
+{
+    my $cmd;
+    my $module = get_module_name(shift);
+
+    my $tmpdir = File::Temp->newdir();
+    my $mirror_dir = get_mirror_dir($module);
+    my $rev = $::modules{$module}->{"git_rev"};
+    my $ver = $::modules{$module}->{"version"};
+    my $spec = $::modules{$module}->{"spec_file"};
+    my $tmp = $tmpdir->dirname;
+
+    $cmd = "git -C $mirror_dir log -1 $rev";
+    my $fh;
+    open $fh, "$cmd |" or die "$cmd | : $!";
+    print "==============================================================================\n";
+    while (<$fh>) {
+        chomp;
+        print "$module: $_\n";
+    }
+    print "==============================================================================\n";
+    close $fh;
+
+    $cmd = "git -C $mirror_dir archive --format=tar $rev: | tar -C $tmp -x";
+    print "Execute: $cmd\n";
+    system($cmd) == 0
+        or die "### Failed to copy revision $rev of $module to temporary directory: $!";
+
+    if ($::settings->{builddep}) {
+        $cmd = "sudo $::builddep $tmp/$spec";
+        print "Execute: $cmd\n";
+        if (system($cmd) != 0) {
+            print "### Failed to satisfy build dependencies of $module\n";
+            return 0;
+        }
+    }
+
+    my $make_options = join(' ', @::make_options);
+    if ($::settings->{release_rpms}) {
+        $cmd = "make -C $tmp rpm $make_options";
+        system($cmd) == 0
+            or die "Failed to build $module";
+
+        my @noarch_rpms = glob("$::noarch_rpm_dir/$module*$ver.*.rpm");
+        my @x86_64_rpms = glob("$::x86_64_rpm_dir/$module*$ver.*.rpm");
+
+        $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms));
+        print "Execute: $cmd\n";
+        if (system("$cmd") == 0) {
+            return 1;
+        } else {
+            push(@::sudo_failed, $module);
+            return 0;
+        }
+    } else {
+        $cmd = "make -j $::num_cpus -C $tmp $make_options";
+        print "Execute: $cmd\n";
+        if (system($cmd) != 0) {
+            return 0;
+        }
+
+        if (-d "$tmp/test") {
+            $cmd = "make -j $::num_cpus -C $tmp test $make_options";
+            print "Execute: $cmd\n";
+            if (system($cmd) != 0) {
+                push(@::tests_failed, $module);
+                return 0;
+            }
+        }
+
+        $cmd = "sudo make -C $tmp install $make_options";
+        print "Execute: $cmd\n";
+        if (system($cmd) == 0) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+
+sub build_and_install_module_rpms_recursive
+{
+    my $module = get_module_name(shift);
+
+    my $build_path_ref = shift;
+    my @build_path;
+    if (defined($build_path_ref)) {
+        @build_path = @$build_path_ref;
+    }
+    push(@build_path, $module);
+
+    update_local_mirror($module);
+
+    get_last_release_info($module);
+
+    my $dep_ref = $::modules{$module}->{"requires"};
+    my $bdep_ref = $::modules{$module}->{"build_requires"};
+    my $tdep_ref = $::modules{$module}->{"test_requires"};
+
+    my %deplist;
+    foreach (@$dep_ref, @$bdep_ref, @$tdep_ref) { $deplist{$_} = 1; }
+
+    my $ret_code = 1;
+
+    if ($::settings->{recursive}) {
+        foreach my $dep (keys %deplist) {
+            if (not defined $::modules{$dep}) {
+                if (not build_and_install_module_rpms_recursive($dep, \@build_path)) {
+                    $ret_code = 0;
+                }
+            }
+        }
+    }
+
+    if ($::settings->{recursive}) {
+        print "PROCESSING: ".join(' ==> ', @build_path)."\n";
+    }
+
+    if (defined($::settings->{update_only})) {
+        return;
+    }
+
+    if ($ret_code) {
+        check_available($module);
+
+        if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
+            if (build_and_install_module($module)) {
+                export_rpms($module);
+            } else {
+                push (@::failed_modules, $module);
+                $ret_code = 0;
+            }
+        }
+    }
+
+    return $ret_code;
+}
+
+sub build_and_install_module_recursive
+{
+    my $module = get_module_name(shift);
+
+    my $build_path_ref = shift;
+    my @build_path;
+    if (defined($build_path_ref)) {
+        @build_path = @$build_path_ref;
+    }
+    push(@build_path, $module);
+
+    update_local_mirror($module);
+    get_last_release_info($module);
+
+    my $dep_ref = $::modules{$module}->{"requires"};
+    my $bdep_ref = $::modules{$module}->{"build_requires"};
+    my $tdep_ref = $::modules{$module}->{"test_requires"};
+
+    my %deplist;
+    foreach (@$dep_ref, @$bdep_ref, @$tdep_ref) { $deplist{$_} = 1; }
+
+    my $ret_code = 1;
+
+    if ($::settings->{recursive}) {
+        foreach my $dep (keys %deplist) {
+            if (not defined $::modules{$dep}) {
+                if (not build_and_install_module_recursive($dep, \@build_path)) {
+                    $ret_code = 0;
+                }
+            }
+        }
+    }
+
+    if ($::settings->{recursive}) {
+        print "PROCESSING: ".join(' ==> ', @build_path)."\n";
+    }
+
+    if ($ret_code and not $::settings->{update_only}) {
+        $ret_code = build_and_install_module($module);
+    }
+
+    return $ret_code;
+}
+
+
+#########################################################################################################
+
+my @module_list;
+
+sub help
+{
+    print "\n";
+    print "Build script for SmartMet packagess\n";
+    print "\n";
+    print "Command line options:\n";
+    print "  --config             - config file (JSON format)\n";
+    print "  --default-config     - use default built-in config\n";
+    print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
+    print "                         of large amount of data if started from wrong directory\n";
+    print "  --release-rpms       - build RPM backages of latest release versions\n";
+    print "  --release            - build, test and install SmartMet latest release versions\n";
+    print "  --current            - build, test and ubstall current head version of GIT\n";
+    print "                         master branch of packages\n";
+    print "  --recursive          - build also dependencies recursively\n";
+    print "  --update             - only update local GIT mirrors (no build)\n";
+    print "  --local              - do not update local GIT mirrors\n";
+    print "  --dump-config        - do not build or update GIT repos, only dump current configuration\n";
+    print "  --add-module         - add one or more SmartMet modules (comma separated list). Can also\n";
+    print "                         specified more than once\n";
+    print "  --remove-module      - remove module from configuration\n";
+    print "  --add-ignore         - add dependency (smartmet-* to be ignored)\n";
+    print "  --remove-ignore      - remove ignored dependency\n";
+    print "  --asan               - use address sanitizer\n";
+    print "  --tsan               - use thread sanitizer\n";
+    print "  --builddep           - run yum-buildep or 'dnf builddep' before build (default in case of release-rpms)\n";
+    print "  --clang              - use clang++ instead of g++\n";
+    print "\n";
+}
+
+sub handle_params
+{
+    my %param;
+
+    GetOptions(
+        'help'               => sub { help(); exit(0); },
+        'config=s'             => \$param{config_file},
+        'default-config'       => \$param{default_config},
+        'create-workspace'     => sub { make_path("workspace/mirror"); },
+        'release-rpms'         => \$param{release_rpms},
+        'release'              => \$param{release},
+        'current'              => \$param{current},
+        'recursive'            => \$param{recursive},
+        'update'               => \$param{update_only},
+        'local'                => \$param{local_only},
+        'dump-config'          => \$param{dump_config},
+        'add-module=s@'        => \$param{add_module},
+        'remove-module=s@'     => \$param{remove_module},
+        'add-ignore=s@'        => \$param{add_ignore},
+        'remove-ignore=s@'     => \$param{remove_ignore},
+        'set-private=s@'       => \$param{set_private},
+        'clear-private=s@'     => \$param{clear_private},
+        'asan'                 => \$param{asan},
+        'tsan'                 => \$param{tsan},
+        'buildep'              => \$param{builddep},
+        'clang'                => \$param{clang}
+        );
+
+    my $config;
+
+    die "Use command line option --create-workspace to create workspace at first use"
+        unless -d "workspace/mirror";
+
+    if (defined($param{default_config})) {
+        not defined($param{config_file}) or die "Cannot specify both --config and --default-config";
+        foreach my $name (keys %::default_modules) {
+            # No private modules in default configuration
+            my $private = 0;
+            my $repo = defined($::default_github_name_map{$name}) ? $::default_github_name_map{$name} : $name;
+            $config->{modules}->{$name}->{private} = $private;
+            $config->{modules}->{$name}->{repo} = $repo;
+        }
+        foreach my $name (keys %::default_ignore) {
+            $config->{ignore}->{$name} = 1;
+        }
+    }
+
+    if (defined($param{config_file})) {
+        my $fh;
+        open$fh, '<', $param{config_file}
+            or die "Cannot open file $param{config_file}: $!";
+        my $file_content = do { local $/; <$fh> };
+
+        $config = decode_json($file_content) or die "Failed to parse config file $param{onfig_file}: $!";
+        foreach (keys %$config) {
+            if (!m/(?:modules|ignore|recursive)/) {
+                print "CONFIG: unrecognized section $_\n";
+                delete($config->{$_});
+            }
+        }
+    }
+
+    defined($config->{modules}) or $config->{modules} = ();
+    defined($config->{ignore}) or $config->{ignore} = ();
+
+    if (defined($param{add_module})) {
+        my $add_module_list_ref = $param{add_module};
+        foreach (split(/,/, join(',', @$add_module_list_ref))) {
+            if (m/([\w\-_]+)(?:\(([\w\-_]+)\))?/) {
+                my $name = $1;
+                my $repo = defined($2) ? $2 : $1;
+                if (defined($config->{modules}->{$name})) {
+                    print "ADD_MODULE($name): already added\n";
+                } else {
+                    $config->{modules}->{$name}->{'private'} = 0;
+                }
+                $config->{modules}->{$name}->{'repo'} = $repo;
+            }
+        }
+    }
+
+    if (defined($param{remove_module})) {
+        my $remove_module_list_ref = $param{remove_module};
+        foreach my $name (split(/,/, join(',', @$remove_module_list_ref))) {
+            if (defined($config->{modules}->{$name})) {
+                delete($config->{modules}->{$name});
+            } else {
+                print "REMOVE_MODULE($name): not found\n";
+            }
+        }
+    }
+
+    if (defined($param{add_ignore})) {
+        my $list_ref = $param{add_ignore};
+        foreach my $name (split(/,/, join(',', @$list_ref))) {
+            if (defined($config->{ignore}->{$name})) {
+                print "ADD_IGNORE($name): already added\n";
+            } else {
+                $config->{ignore}->{$name} = 1;
+            }
+        }
+    }
+
+    if (defined($param{remove_ignore})) {
+        my $list_ref = $param{remove_ignore};
+        foreach my $name (split(/,/, join(',', @$list_ref))) {
+            if (defined($config->{ignore}->{name})) {
+                delete($config->{ignore}->{$name});
+            } else {
+                print "REMOVE_IGNORE($name): not found\n";
+            }
+        }
+    }
+
+    if (defined($param{set_private})) {
+        my $list_ref = $param{set_private};
+        foreach my $name (split(/,/, join(',', @$list_ref))) {
+            if (defined($config->{modules}->{$name})) {
+                $config->{modules}->{$name}->{private} = 1;
+            } else {
+                print "SET_PRIVATE($name): no such module\n";
+            }
+        }
+    }
+
+    if (defined($param{clear_private})) {
+        my $list_ref = $param{clear_private};
+        foreach my $name (split(/,/, join(',', @$list_ref))) {
+            if (defined($config->{modules}->{$name})) {
+                $config->{modules}->{$name}->{private} = 0;
+            } else {
+                print "SET_PRIVATE($name): no such module\n";
+            }
+
+            if (defined($config->{modiuignore}->{name})) {
+                delete($config->{ignore}->{$name});
+            } else {
+                print "REMOVE_IGNORE($name): not found\n";
+            }
+        }
+    }
+
+    my $settings;
+    foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
+             'dump_config', 'asan', 'tsan', 'builddep', 'clang') {
+        if (defined($param{$_})) {
+            $settings->{$_} = 1;
+        } else {
+            $settings->{$_} = 0;
+        }
+    }
+
+    # TODO: report errors on conflicts
+
+    $::config = $config;
+    $::settings = $settings;
+}
+
+handle_params;
+
+if ($::settings->{dump_config}) {
+    my $json = JSON::PP->new->allow_nonref;
+    $json->canonical();
+    print $json->pretty->encode($::config);
+    exit(0);
+}
+
+if ($::settings->{update_only} and $::settings{local_only}) {
+    die "Command line options --local and --update cannot both be specified";
+}
+
+my @make_flags;
+if ($::settings->{asan} and $::settings->{tsan}) {
+    die "Command line options --asan and --tsan cannot both be specified";
+} elsif ($::settings->{asan}) {
+    push (@make_flags, 'ASAN=yes');
+} elsif ($::settings->{tsan}) {
+    push (@make_flags, 'TSAN=yes');
+}
+
+if ($::settings->{clang}) {
+    push (@make_flags, 'CXX=clang++');
+}
+
+@::make_options = join(' ', @make_flags);
+
+get_system_info;
+
+my $modules_ref = $::config->{modules};
+for my $module (keys %$modules_ref) {
+    if ($::settings->{release_rpms}) {
+        build_and_install_module_rpms_recursive($module);
+    } else {
+        build_and_install_module_recursive($module);
+    }
+}
+
+my $result = 0;
+if (scalar(@::failed_modules)) {
+    print "==============================================================\n";
+    print "Failed to build:\n";
+    foreach (@::failed_modules) {
+        print "    $_\n";
+        $result = 1;
+    }
+}
+
+if (scalar(@::tests_failed)) {
+    print "==============================================================\n";
+    print "Tests failed for:\n";
+    foreach (@::tests_failed) {
+        print "    $_\n";
+        $result = 1;
+    }
+}
+
+if (scalar(@::sudo_failed)) {
+    print "==============================================================\n";
+    print "SUDO operation failed for:\n";
+    foreach (@::sudo_failed) {
+        print "    $_\n";
+        $result = 1;
+    }
+}
+
+#print Dumper(\%::modules);
+
+exit $result;

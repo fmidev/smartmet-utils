@@ -37,6 +37,10 @@ Provides: smartpngdiff
 Provides: smartmet-makefile-inc
 Requires: make bash perl
 Requires: ImageMagick
+Requires: perl-Carp-Always
+Requires: perl-Data-Dumper
+Requires: perl-Getopt-Long
+Requires: perl-JSON-PP
 #TestRequires: bc
 
 %description devel
