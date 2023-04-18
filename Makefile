@@ -9,7 +9,7 @@ PROG = \
 	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
-	smartpngdiffgit
+	smartpngdiff
 
 .PHONY: rpm
 
