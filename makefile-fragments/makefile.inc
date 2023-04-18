@@ -208,13 +208,8 @@ ifneq ($(filter gdal,$(REQUIRES)),)
     INCLUDES += -isystem /usr/gdal34/include
     GDAL_LIBS = -L$(PREFIX)/gdal34/lib -lgdal
   else
-    ifneq "$(wildcard /usr/gdal33/include)" ""
-      INCLUDES += -isystem /usr/gdal33/include
-      GDAL_LIBS = -L$(PREFIX)/gdal33/lib -lgdal
-    else
-      INCLUDES += -isystem /usr/include/gdal
-      GDAL_LIBS = -lgdal
-    endif
+    INCLUDES += -isystem /usr/include/gdal
+    GDAL_LIBS = -lgdal
   endif
   REQUIRED_LIBS += $(GDAL_LIBS)
 endif
@@ -228,13 +223,8 @@ ifneq ($(filter geos,$(REQUIRES)),)
 #   /usr/geos310/bin/geos-config --libs is broken
     GEOS_LIBS = -L /usr/geos310/lib64 -lgeos
   else
-    ifneq "$(wildcard /usr/geos39/bin/geos-config)" ""
-      INCLUDES += $(shell /usr/geos39/bin/geos-config --cflags 2>/dev/null)
-      GEOS_LIBS = $(shell /usr/geos39/bin/geos-config --libs 2>/dev/null)
-    else
-      ifneq "$(wildcard /usr/bin/geos-config)" ""
-        GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
-      endif
+    ifneq "$(wildcard /usr/bin/geos-config)" ""
+      GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
     endif
   endif
   REQUIRED_LIBS += $(GEOS_LIBS)
