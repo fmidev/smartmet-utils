@@ -629,6 +629,8 @@ sub build_and_install_module_rpms_recursive
                 $ret_code = 0;
             }
         }
+    } else {
+        print "SKIPPING BUILD DUE TO FAILED DEPENDENCY: $dep_path\n";
     }
 
     return $ret_code;
@@ -688,6 +690,8 @@ sub build_and_install_module_recursive
                 $ret_code = 0;
             }
         }
+    } else {
+        print "SKIPPING BUILD DUE TO FAILED DEPENDENCY: $dep_path\n";
     }
 
     return $ret_code;
