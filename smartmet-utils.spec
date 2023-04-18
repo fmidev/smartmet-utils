@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 23.4.17
+Version: 23.4.18
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -61,6 +61,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Apr 18 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.4.18-1.fmi
+- makefile.inc cleanup and new script smartbuild
+
 * Mon Apr 17 2023 Mika Heiskanen <mika.heiskanen@fmi.fi> - 23.4.17-1.fmi
 - Support libpq
 
