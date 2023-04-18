@@ -667,8 +667,8 @@ sub build_and_install_module_recursive
         }
     }
 
-    if ($ret_code and not $::settings->{update_only}) {
-        $ret_code = build_and_install_module($module);
+    if ($::settings->{update_only}) {
+        return;
     }
 
     if ($ret_code) {
