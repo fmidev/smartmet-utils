@@ -533,9 +533,12 @@ sub build_and_install_module($)
     my $make_options = join(' ', @::make_options);
     if ($::settings->{release_rpms}) {
         $cmd = "make -C $tmp rpm $make_options";
-        system($cmd) == 0
-            or die "Failed to build $module";
-
+        if (system($cmd) != 0) {
+            print "\n";
+            print "*** Failed to build $module\n";
+            print "\n";
+            return 0;
+        }
         my @noarch_rpms = glob("$::noarch_rpm_dir/$module*$ver.*.rpm");
         my @x86_64_rpms = glob("$::x86_64_rpm_dir/$module*$ver.*.rpm");
 
