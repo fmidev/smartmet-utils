@@ -3,12 +3,13 @@ MODULE = utils
 include makefile-fragments/makefile.inc
 
 PROG = \
+	smartbuild \
 	smartbuildrev \
 	smartbuildcfg \
 	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
-	smartpngdiff
+	smartpngdiffgit
 
 .PHONY: rpm
 

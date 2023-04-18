@@ -83,9 +83,9 @@ my @make_options;
 # Installed and available versions
 %::available = ();
 %::installed = ();
-%::local_installs = ();
 
 $::pkg_man = undef;
+$::get_available = undef;
 $::debug_dir = undef;
 $::x86_64_dir = undef;
 $::builddep = undef;
@@ -110,51 +110,51 @@ sub get_installed_versions
         chomp;
         if (m/-(?:debuginfo|debugsource)-/) {
             next;
-        } elsif (m/^(.*?)-([\d\.]*)-(\d*)\.el\d(\.fmi|)?\.(?:x86_64|noarch)/) {
-            $::installed{$1} = "$2-$3";
+        } elsif (m/^(.*?)-([\d\.]*)-([\w\._]+?)\.(?:x86_64|noarch)/) {
+            my $name = $1;
+            my $ver = $2;
+            my $rev = $3;
+            $name =~ s/-devel$//;
+            $rev =~ s/\.fmi$//;
+            $rev =~ s/\.el.*//;
+            $::installed{$name} = "$ver-$rev";
         }
     }
     close $input;
-
-    #print Dumper(\%::installed);
 }
 
 sub get_available_versions
 {
     my $input;
 
-    my $cmd = "$::pkg_man --disablerepo='*' --enablerepo='smartmet*' -q list 'smartmet*'";
+    my $cmd = "$::get_available 'smartmet*' 2>/dev/null";
     open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
 
     my $phase = 0;
 
+    # Unfortunately YUM line wrapping causes problems. Try to workaround that
+    my @words;
+
+    # Read YUM or DNF response into an array
     while (<$input>) {
         chomp;
-        if (m/^smartmet/) {
-            next if (m/-(?:debugsource|debuginfo)\./);
-            s/-devel\././;
+        $phase = 1 if (m/^smartmet/);
+        if ($phase == 1) {
             my @parts = split;
-            $parts[0] =~ s/\.(?:x86_64|noarch)$//;
-            $parts[1] =~ s/\.el8\.fmi$//;
-            if ($phase == 1) {
-#                $::installed{$parts[0]} = $parts[1];
-            } elsif ($phase == 2) {
-                $::available{$parts[0]} = $parts[1];
-            }
-            if ($parts[2] eq '@@commandline') {
-                $::local_installs{$parts[0]} = 1;
-            } else {
-                $::local_installs{$parts[0]} = 0;
-            }
-        } elsif (m/^Installed/) {
-            $phase = 1;
-        } elsif (m/^Available/) {
-            $phase = 2;
+            push(@words, @parts);
         }
     }
     close($input);
 
-    #print Dumper(\%::available);
+    for (my $i = 0; $i <= $#words; $i += 3) {
+        die "Error parsing $::pkg_man output" unless ($words[$i] =~ m/^smartmet*/);
+        my $name = $words[$i];
+        my $ver = $words[$i + 1];
+        next if ($name =~ m/(?:debugsource|debuginfo)/);
+        $name =~ s/-devel$//;
+        $ver =~ s/(-\d+)\..*/$1/;
+        $::available{$name} = $ver;
+    }
 }
 
 sub get_system_info
@@ -166,16 +166,19 @@ sub get_system_info
         $::debug_dir = "rhel/7/beta";
         $::x86_64_dir = "rhel/7/beta";
         $::builddep = "yum-builddep";
+        $::get_available = "repoquery --disablerepo='*' --enablerepo='smartmet*' --queryformat='%{name} %{evr} %{repoid}'";
     } elsif ($::rhel_ver == 8) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/8/beta";
         $::x86_64_dir = "rhel/8/beta";
         $::builddep = "dnf builddep";
+        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}";
     } elsif ($::rhel_ver == 9) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/9/debug";
         $::x86_64_dir = "rhel/9/x86_64";
         $::builddep = "dnf builddep";
+        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif ($::settings->{update_only}) {
     } else {
         die "Unsupported version '$::rhel_ver'";
@@ -470,9 +473,16 @@ sub check_available($)
 
     if (defined($::available{$module}) and ($::available{$module} eq $::modules{$module}->{version})) {
         my $cmd;
+        my $id_available = version_to_num($::available{$module});
+        my $id_current = version_to_num($::modules{$module}->{version});
         if (defined($::installed{$module})) {
-            print "Current version $::modules{$module}->{version} found in repository --> upgrading to it\n";
-            $cmd = "sudo $::pkg_man -y upgrade $module".'*';
+            my $id_installed = version_to_num($::installed{$module});
+            if (defined($id_installed) and defined($id_available) and $id_available > $id_installed) {
+                print "Current version $::modules{$module}->{version} found in repository --> upgrading to it\n";
+                $cmd = "sudo $::pkg_man -y upgrade $module".'*';
+            } else {
+                return;
+            }
         } else {
             print "Current version $::modules{$module}->{version} found in repository --> installing it\n";
             $cmd = "sudo $::pkg_man -y install $module".'*';
@@ -574,6 +584,9 @@ sub build_and_install_module_rpms_recursive
     }
     push(@build_path, $module);
 
+    my $dep_path = join(' ==> ', @build_path);
+    print "CHECKING: ".join(' ==> ', @build_path)."\n";
+
     update_local_mirror($module);
 
     get_last_release_info($module);
@@ -597,11 +610,7 @@ sub build_and_install_module_rpms_recursive
         }
     }
 
-    if ($::settings->{recursive}) {
-        print "PROCESSING: ".join(' ==> ', @build_path)."\n";
-    }
-
-    if (defined($::settings->{update_only})) {
+    if ($::settings->{update_only}) {
         return;
     }
 
@@ -609,6 +618,7 @@ sub build_and_install_module_rpms_recursive
         check_available($module);
 
         if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
+            print "BUILDING: $dep_path.$::modules{$module}->{version}\n";
             if (build_and_install_module($module)) {
                 export_rpms($module);
             } else {
@@ -632,6 +642,9 @@ sub build_and_install_module_recursive
     }
     push(@build_path, $module);
 
+    my $dep_path = join(' ==> ', @build_path);
+    print "CHECKING: ".join(' ==> ', @build_path)."\n";
+
     update_local_mirror($module);
     get_last_release_info($module);
 
@@ -654,12 +667,24 @@ sub build_and_install_module_recursive
         }
     }
 
-    if ($::settings->{recursive}) {
-        print "PROCESSING: ".join(' ==> ', @build_path)."\n";
-    }
-
     if ($ret_code and not $::settings->{update_only}) {
         $ret_code = build_and_install_module($module);
+    }
+
+    if ($ret_code) {
+        check_available($module);
+
+        if (defined($::installed{$module})) { print "installed: $::installed{$module}\n"; }
+
+        if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
+            print "BUILDING: ".join(' ==> ', @build_path)."\n";
+            if (build_and_install_module($module)) {
+                export_rpms($module);
+            } else {
+                push (@::failed_modules, $module);
+                $ret_code = 0;
+            }
+        }
     }
 
     return $ret_code;
@@ -887,6 +912,8 @@ if ($::settings->{clang}) {
 @::make_options = join(' ', @make_flags);
 
 get_system_info;
+
+#print Dumper(\$::settings);
 
 my $modules_ref = $::config->{modules};
 for my $module (keys %$modules_ref) {
