@@ -271,11 +271,7 @@ sub export_rpms($)
 sub get_repo_name($)
 {
     my $module = get_module_name(shift);
-    if (defined $::default_github_name_map{$module}) {
-        return $::default_github_name_map{$module};
-    } else {
-        return $module;
-    }
+    return $::config->{modules}->{$module}->{repo};
 }
 
 sub update_local_mirror($)
@@ -866,7 +862,7 @@ sub handle_params
                 print "SET_PRIVATE($name): no such module\n";
             }
 
-            if (defined($config->{modiuignore}->{name})) {
+            if (defined($config->{ignore}->{name})) {
                 delete($config->{ignore}->{$name});
             } else {
                 print "REMOVE_IGNORE($name): not found\n";
