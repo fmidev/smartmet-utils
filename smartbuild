@@ -159,8 +159,8 @@ sub get_available_versions
 
 sub get_system_info
 {
-    $::rhel_ver = int(`rpm --eval '%{rhel}'`);
-    print "RHEL version: '$::rhel_ver'\n";
+    my $rhel_ver_raw = `rpm --eval '%{rhel}' 2>/dev/null`;
+    $::rhel_ver = ($rhel_ver_raw =~ m/ş*\d+\s*/) ? int($rhel_ver_raw) : -1;
     if ($::rhel_ver == 7) {
         $::pkg_man = "yum";
         $::debug_dir = "rhel/7/beta";
@@ -179,7 +179,7 @@ sub get_system_info
         $::x86_64_dir = "rhel/9/x86_64";
         $::builddep = "dnf builddep";
         $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
-    } elsif ($::settings->{update_only}) {
+    } elsif (not $::settings->{release_rpms}) {
     } else {
         die "Unsupported version '$::rhel_ver'";
     }
@@ -204,8 +204,10 @@ sub get_system_info
         $::num_cpus =  $num_cpus;
     }
 
-    get_installed_versions;
-    get_available_versions;
+    if (defined($::pkg_man)) {
+        get_installed_versions;
+        get_available_versions;
+    }
 }
 
 sub version_to_num($)
@@ -458,6 +460,8 @@ sub check_available($)
 {
     my $module = get_module_name(shift);
 
+    return unless(defined($::pkg_man));
+
     if (defined($::available{$module})) {
         my $id1 = version_to_num($::available{$module});
         my $id2 = version_to_num($::modules{$module}->{version});
@@ -575,6 +579,8 @@ sub build_and_install_module($)
 sub build_and_install_module_rpms_recursive
 {
     my $module = get_module_name(shift);
+
+    die "Incompatible system for building release RPMS" unless(defined($::pkg_man));
 
     my $build_path_ref = shift;
     my @build_path;
