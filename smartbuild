@@ -23,6 +23,16 @@ use Data::Dumper;
 
 ################################################################################################
 
+$::canceled = undef;
+
+$SIG{INT} = sub {
+    print "GOT SIGINT\n";
+    $::canceled = 1;
+    kill 15, 0;
+};
+
+################################################################################################
+
 %::default_modules = (
     "smartmet-plugin-admin"                 => { "branch" => "", "spec" => ""},
     "smartmet-plugin-autocomplete"          => {},
@@ -439,6 +449,9 @@ sub extract_requires($$$)
     $::modules{$module}->{"requires"} = \@requires;
     $::modules{$module}->{"build_requires"} = \@build_requires;
     $::modules{$module}->{"test_requires"} = \@test_requires;
+    $::modules{$module}->{build} = 0;
+    $::modules{$module}->{tests} = 0;
+    $::modules{$module}->{install} = 0;
 }
 
 sub get_last_release_info($)
@@ -495,6 +508,8 @@ sub check_available($)
 
 sub build_and_install_module($)
 {
+    not defined($::canceled) or die "Canceled";
+
     my $cmd;
     my $module = get_module_name(shift);
 
@@ -504,6 +519,8 @@ sub build_and_install_module($)
     my $ver = $::modules{$module}->{"version"};
     my $spec = $::modules{$module}->{"spec_file"};
     my $tmp = $tmpdir->dirname;
+
+    $::modules{$module}->{install} = -1;
 
     $cmd = "git -C $mirror_dir log -1 $rev";
     my $fh;
@@ -533,7 +550,10 @@ sub build_and_install_module($)
     my $make_options = join(' ', @::make_options);
     if ($::settings->{release_rpms}) {
         $cmd = "make -C $tmp rpm $make_options";
-        if (system($cmd) != 0) {
+        if (system($cmd) == 0) {
+            $::modules{$module}->{build} = 1;
+        } else {
+            $::modules{$module}->{build} = -1;
             print "\n";
             print "*** Failed to build $module\n";
             print "\n";
@@ -553,24 +573,31 @@ sub build_and_install_module($)
     } else {
         $cmd = "make -j $::num_cpus -C $tmp $make_options";
         print "Execute: $cmd\n";
-        if (system($cmd) != 0) {
+        if (system($cmd) == 0) {
+            $::modules{$module}->{build} = 1;
+        } else {
+            $::modules{$module}->{build} = -1;
             return 0;
         }
 
         if (-d "$tmp/test") {
             $cmd = "make -j $::num_cpus -C $tmp test $make_options";
             print "Execute: $cmd\n";
-            if (system($cmd) != 0) {
+            if (system($cmd) == 0) {
+                $::modules{$module}->{tests} = 1;
+            } else {
+                $::modules{$module}->{tests} = -1;
                 push(@::tests_failed, $module);
-                return 0;
             }
         }
 
         $cmd = "sudo make -C $tmp install $make_options";
         print "Execute: $cmd\n";
         if (system($cmd) == 0) {
+            $::modules{$module}->{install} = 1;
             return 1;
         } else {
+            $::modules{$module}->{install} = -1;
             return 0;
         }
     }
@@ -607,7 +634,16 @@ sub build_and_install_module_rpms_recursive
 
     if ($::settings->{recursive}) {
         foreach my $dep (keys %deplist) {
-            if (not defined $::modules{$dep}) {
+            if (defined $::modules{$dep}) {
+                # We already tried to build dependency module. Check whether that build succeeded
+                if (not $ret_code and $::modules{$dep}->{install} < 0) {
+                    # Earlier build failed: cannot build depending package build failure
+                    print "FAILED DEPENDENCY: $dep_path\n";
+                    $ret_code = 0;
+                } elsif (not $ret_code) {
+                    print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
+                }
+            } else {
                 if (not build_and_install_module_rpms_recursive($dep, \@build_path)) {
                     $ret_code = 0;
                 }
@@ -666,7 +702,16 @@ sub build_and_install_module_recursive
 
     if ($::settings->{recursive}) {
         foreach my $dep (keys %deplist) {
-            if (not defined $::modules{$dep}) {
+            if (defined $::modules{$dep}) {
+                # We already tried to build dependency module. Check whether that build succeeded
+                if (not $ret_code or $::modules{$dep}->{install} < 0) {
+                    # Earlier build failed: cannot build depending package build failure
+                    print "FAILED DEPENDENCY: $dep_path => $dep\n";
+                    $ret_code = 0;
+                } elsif (not $ret_code) {
+                    print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
+                }
+            } else {
                 if (not build_and_install_module_recursive($dep, \@build_path)) {
                     $ret_code = 0;
                 }
@@ -675,7 +720,7 @@ sub build_and_install_module_recursive
     }
 
     if ($::settings->{update_only}) {
-        return;
+        return $ret_code;
     }
 
     if ($ret_code) {
@@ -684,7 +729,7 @@ sub build_and_install_module_recursive
         if (defined($::installed{$module})) { print "installed: $::installed{$module}\n"; }
 
         if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
-            print "BUILDING: ".join(' ==> ', @build_path)."\n";
+            print "BUILDING: $dep_path\n";
             if (build_and_install_module($module)) {
                 export_rpms($module);
             } else {
@@ -731,6 +776,7 @@ sub help
     print "  --tsan               - use thread sanitizer\n";
     print "  --builddep           - run yum-buildep or 'dnf builddep' before build (default in case of release-rpms)\n";
     print "  --clang              - use clang++ instead of g++\n";
+    print "  --verbose            - output some extra information\n";
     print "\n";
 }
 
@@ -759,7 +805,8 @@ sub handle_params
         'asan'                 => \$param{asan},
         'tsan'                 => \$param{tsan},
         'buildep'              => \$param{builddep},
-        'clang'                => \$param{clang}
+        'clang'                => \$param{clang},
+        'verbose'              => \$param{verbose}
         );
 
     my $config;
@@ -878,7 +925,7 @@ sub handle_params
 
     my $settings;
     foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
-             'dump_config', 'asan', 'tsan', 'builddep', 'clang') {
+             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
@@ -922,7 +969,9 @@ if ($::settings->{clang}) {
 
 get_system_info;
 
-#print Dumper(\$::settings);
+if ($::settings->{verbose}) {
+    print Dumper(\$::settings, ['settings']);
+}
 
 my $modules_ref = $::config->{modules};
 for my $module (keys %$modules_ref) {
@@ -931,6 +980,10 @@ for my $module (keys %$modules_ref) {
     } else {
         build_and_install_module_recursive($module);
     }
+}
+
+if ($::settings->{verbose}) {
+    print Dumper(\%::modules);
 }
 
 my $result = 0;
@@ -960,7 +1013,5 @@ if (scalar(@::sudo_failed)) {
         $result = 1;
     }
 }
-
-#print Dumper(\%::modules);
 
 exit $result;
