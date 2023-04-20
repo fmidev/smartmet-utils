@@ -23,16 +23,6 @@ use Data::Dumper;
 
 ################################################################################################
 
-$::canceled = undef;
-
-$SIG{INT} = sub {
-    print "GOT SIGINT\n";
-    $::canceled = 1;
-    kill 15, 0;
-};
-
-################################################################################################
-
 %::default_modules = (
     "smartmet-plugin-admin"                 => { "branch" => "", "spec" => ""},
     "smartmet-plugin-autocomplete"          => {},
@@ -86,8 +76,6 @@ $::export_dir = "$::workspace/export";
 
 my @make_options;
 
-################################################################################################
-
 %::modules = ();
 
 # Installed and available versions
@@ -101,6 +89,25 @@ $::x86_64_dir = undef;
 $::builddep = undef;
 
 $::num_cpus = 1;
+
+################################################################################################
+
+$::canceled = undef;
+
+$SIG{INT} = sub {
+    print "GOT SIGINT\n";
+    $::canceled = 1;
+    kill 15, 0;
+};
+
+#my $old_die_handler = $SIG{__DIE__};
+$SIG{__DIE__} = sub {
+    print "Settings:\n" . Dumper(\%::settings);
+    print "Modules:\n" . Dumper(\%::modules);
+#    $old_die_handler->();
+};
+
+################################################################################################
 
 sub uniq
 {
@@ -283,7 +290,16 @@ sub export_rpms($)
 sub get_repo_name($)
 {
     my $module = get_module_name(shift);
-    return $::config->{modules}->{$module}->{repo};
+
+    if (defined($::config{modules}->{module})) {
+        return $::config{modules}->{$module}->{repo};
+    }
+
+    if (defined($::modules{$module})) {
+        return $::modules{$module}->{repo};
+    }
+
+    return $module;
 }
 
 sub update_local_mirror($)
@@ -520,6 +536,14 @@ sub build_and_install_module($)
     my $spec = $::modules{$module}->{"spec_file"};
     my $tmp = $tmpdir->dirname;
 
+    my $output_redirect_new = "";
+    my $output_redirect_append = "";
+    if ($::settings->{separate_logs}) {
+        make_path("$::workspace/log");
+        $output_redirect_new = ">$::workspace/log/$module.log 2>&1";
+        $output_redirect_append = ">>$::workspace/log/$module.log 2>&1";
+    }
+
     $::modules{$module}->{install} = -1;
 
     $cmd = "git -C $mirror_dir log -1 $rev";
@@ -549,7 +573,7 @@ sub build_and_install_module($)
 
     my $make_options = join(' ', @::make_options);
     if ($::settings->{release_rpms}) {
-        $cmd = "make -C $tmp rpm $make_options";
+        $cmd = "make -C $tmp rpm $make_options $output_redirect_new";
         if (system($cmd) == 0) {
             $::modules{$module}->{build} = 1;
         } else {
@@ -571,7 +595,7 @@ sub build_and_install_module($)
             return 0;
         }
     } else {
-        $cmd = "make -j $::num_cpus -C $tmp $make_options";
+        $cmd = "make -j $::num_cpus -C $tmp $make_options $output_redirect_new";
         print "Execute: $cmd\n";
         if (system($cmd) == 0) {
             $::modules{$module}->{build} = 1;
@@ -581,7 +605,7 @@ sub build_and_install_module($)
         }
 
         if (-d "$tmp/test") {
-            $cmd = "make -j $::num_cpus -C $tmp test $make_options";
+            $cmd = "make -j $::num_cpus -C $tmp test $make_options $output_redirect_append";
             print "Execute: $cmd\n";
             if (system($cmd) == 0) {
                 $::modules{$module}->{tests} = 1;
@@ -636,7 +660,7 @@ sub build_and_install_module_rpms_recursive
         foreach my $dep (keys %deplist) {
             if (defined $::modules{$dep}) {
                 # We already tried to build dependency module. Check whether that build succeeded
-                if (not $ret_code and $::modules{$dep}->{install} < 0) {
+                if ($::modules{$dep}->{install} < 0) {
                     # Earlier build failed: cannot build depending package build failure
                     print "FAILED DEPENDENCY: $dep_path\n";
                     $ret_code = 0;
@@ -652,7 +676,7 @@ sub build_and_install_module_rpms_recursive
     }
 
     if ($::settings->{update_only}) {
-        return;
+        return $ret_code;
     }
 
     if ($ret_code) {
@@ -704,9 +728,10 @@ sub build_and_install_module_recursive
         foreach my $dep (keys %deplist) {
             if (defined $::modules{$dep}) {
                 # We already tried to build dependency module. Check whether that build succeeded
-                if (not $ret_code or $::modules{$dep}->{install} < 0) {
+                if ($::modules{$dep}->{install} < 0) {
                     # Earlier build failed: cannot build depending package build failure
                     print "FAILED DEPENDENCY: $dep_path => $dep\n";
+                    print Dumper(\$::modules{$dep});
                     $ret_code = 0;
                 } elsif (not $ret_code) {
                     print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
@@ -777,6 +802,7 @@ sub help
     print "  --builddep           - run yum-buildep or 'dnf builddep' before build (default in case of release-rpms)\n";
     print "  --clang              - use clang++ instead of g++\n";
     print "  --verbose            - output some extra information\n";
+    print "  --separate-logs      - write module build, test and install output to separate files\n";
     print "\n";
 }
 
@@ -806,7 +832,8 @@ sub handle_params
         'tsan'                 => \$param{tsan},
         'buildep'              => \$param{builddep},
         'clang'                => \$param{clang},
-        'verbose'              => \$param{verbose}
+        'verbose'              => \$param{verbose},
+        'separate-logs'        => \$param{separate_logs}
         );
 
     my $config;
@@ -925,7 +952,7 @@ sub handle_params
 
     my $settings;
     foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
-             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose') {
+             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
