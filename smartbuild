@@ -345,6 +345,7 @@ sub extract_spec_version($$$)
         } elsif (m/\s*Release:/) {
             s/\s*Release:\s*//;
             s/\%.*//;
+            s/\.fmi$//;
             $release = $_;
         }
     }
@@ -401,7 +402,6 @@ sub get_revision_and_version
             my $rev;
             while (<$input>) {
                 if (m/^commit/) {
-                    print;
                     chomp;
                     s/^commit\s+//;
                     my $curr_rev = $_;
@@ -751,16 +751,10 @@ sub build_and_install_module_recursive
     if ($ret_code) {
         check_available($module);
 
-        if (defined($::installed{$module})) { print "installed: $::installed{$module}\n"; }
-
-        if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
-            print "BUILDING: $dep_path\n";
-            if (build_and_install_module($module)) {
-                export_rpms($module);
-            } else {
-                push (@::failed_modules, $module);
-                $ret_code = 0;
-            }
+        print "BUILDING: $dep_path\n";
+        if (build_and_install_module($module) == 0) {
+            push (@::failed_modules, $module);
+            $ret_code = 0;
         }
     } else {
         print "SKIPPING BUILD DUE TO FAILED DEPENDENCY: $dep_path\n";
