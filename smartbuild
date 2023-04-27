@@ -18,6 +18,7 @@ use File::Path qw/ make_path remove_tree /;
 use File::Temp qw/ tempfile tempdir /;
 use JSON::PP;
 use Getopt::Long;
+use POSIX ':signal_h';
 
 use Data::Dumper;
 
@@ -117,6 +118,24 @@ sub uniq
         $tmp{$_} = 1;
     }
     return sort(keys %tmp);
+}
+
+sub execute_cmd($)
+{
+    my $cmd = shift;
+    my $retcode = system($cmd);
+    if ($retcode == -1) {
+        die "Failed to execute $cmd: $!";
+    }
+
+    if ($retcode & 127) {
+        my $sig = $retcode & 127;
+        die "Command $cmd terminated with signal $sig";
+    } else {
+        $retcode >>= 8;
+    }
+
+    return $retcode;
 }
 
 sub get_installed_versions
@@ -588,7 +607,7 @@ sub build_and_install_module($)
 
         $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms));
         print "Execute: $cmd\n";
-        if (system("$cmd") == 0) {
+        if (execute_cmd("$cmd") == 0) {
             return 1;
         } else {
             push(@::sudo_failed, $module);
@@ -597,7 +616,7 @@ sub build_and_install_module($)
     } else {
         $cmd = "make -j $::num_cpus -C $tmp $make_options $output_redirect_new";
         print "Execute: $cmd\n";
-        if (system($cmd) == 0) {
+        if (execute_cmd($cmd) == 0) {
             $::modules{$module}->{build} = 1;
         } else {
             $::modules{$module}->{build} = -1;
@@ -607,7 +626,7 @@ sub build_and_install_module($)
         if (-d "$tmp/test") {
             $cmd = "make -j $::num_cpus -C $tmp test $make_options $output_redirect_append";
             print "Execute: $cmd\n";
-            if (system($cmd) == 0) {
+            if (execute_cmd($cmd) == 0) {
                 $::modules{$module}->{tests} = 1;
             } else {
                 $::modules{$module}->{tests} = -1;
@@ -617,7 +636,7 @@ sub build_and_install_module($)
 
         $cmd = "sudo make -C $tmp install $make_options";
         print "Execute: $cmd\n";
-        if (system($cmd) == 0) {
+        if (execute_cmd($cmd) == 0) {
             $::modules{$module}->{install} = 1;
             return 1;
         } else {
