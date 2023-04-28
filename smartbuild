@@ -208,7 +208,7 @@ sub get_system_info
         $::debug_dir = "rhel/8/beta";
         $::x86_64_dir = "rhel/8/beta";
         $::builddep = "dnf builddep";
-        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}";
+        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif ($::rhel_ver == 9) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/9/debug";
