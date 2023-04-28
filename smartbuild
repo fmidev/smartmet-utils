@@ -300,7 +300,7 @@ sub export_rpms($)
         make_path($dest);
         print "MOVE: $rpm ==> $dest/$fn";
         if ( -f "$dest/$fn" ) {
-            remove("$dest/$fn");
+            unlink("$dest/$fn");
         }
         move($rpm, "$dest/$fn") or die "Filed to move: $!";
     }
@@ -608,6 +608,7 @@ sub build_and_install_module($)
         $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms));
         print "Execute: $cmd\n";
         if (execute_cmd("$cmd") == 0) {
+	    $::modules{$module}->{install} = 1;
             return 1;
         } else {
             push(@::sudo_failed, $module);
