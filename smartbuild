@@ -291,7 +291,7 @@ sub export_rpms($)
     foreach my $rpm (@rpms) {
         my $dest;
         my $fn = basename($rpm);
-        if ($rpm =~ m/(?:_debuginfo|debugsource)/) {
+        if ($rpm =~ m/-(?:debuginfo|debugsource)-/) {
             $dest = "$export_to/$::debug_dir";
         } else {
             $dest = "$export_to/$::x86_64_dir";
