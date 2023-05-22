@@ -684,12 +684,14 @@ sub build_and_install_module_rpms_recursive
                     # Earlier build failed: cannot build depending package build failure
                     print "FAILED DEPENDENCY: $dep_path\n";
                     $ret_code = 0;
-                } elsif (not $ret_code) {
-                    print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
                 }
             } else {
-                if (not build_and_install_module_rpms_recursive($dep, \@build_path)) {
-                    $ret_code = 0;
+                if ($ret_code) {
+                    if (not build_and_install_module_rpms_recursive($dep, \@build_path)) {
+                        $ret_code = 0;
+                    }
+                } else {
+                    print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
                 }
             }
         }
