@@ -1,0 +1,78 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+
+sub CxxCheck
+{
+    my $CXX = shift;
+
+    my $fd;
+    open $fd, "$CXX -x c++ -E -dD /dev/null 2>/dev/null |" or die "Failed to run '$CXX': $!";
+
+    my $is_clang = 0;
+    my $clang_major;
+    my $clang_version;
+
+    my $gcc_major;
+    my $gcc_minor;
+
+    my $cplusplus;
+
+    while (<$fd>) {
+        chomp;
+        if (m/^#define/) {
+            s/^#define\s+//;
+            if (m/^__clang_major__\s+(\w+)\s*$/) {
+                $clang_major = $1;
+            } elsif (m/^__clang_version__\s+(\w+)\s*$/) {
+                $clang_version = $1;
+            } elsif (m/^__GNUC__\s+(\d+)\s*$/) {
+                $gcc_major = $1;
+            } elsif (m/^__GNUC_MINOR__\s+(\d+)\s*$/) {
+                $gcc_minor = $1;
+            } elsif (m/^__cplusplus\s+(\w+)L\s*$/) {
+                $cplusplus = $1;
+        }
+
+        } else {
+            # Not #define -> ignore it
+        }
+    }
+    close $fd;
+
+    my $result;
+    if (defined $clang_major) {
+        $result->{compiler_id} = "clang++";
+        $result->{compiler_mver} = $clang_major;
+        if ($CXX ne "g++") {
+            my $gpp_info = CxxCheck("g++");
+            $result->{cxx_std} = $gpp_info->{cxx_std};
+        }
+    } elsif (defined $gcc_major) {
+        $result->{compiler_id} = "g++";
+        if ($gcc_major < 5) {
+            $result->{compiler_mver} = "$gcc_major.$gcc_minor";
+        } else {
+            $result->{compiler_mver} = $gcc_major;
+        }
+
+        if ($gcc_major < 7) {
+            $result->{cxx_std} = "c++11";
+        } else {
+            $result->{cxx_std} = "c++17";
+        }
+    } else {
+        $result->{compiler_id} = "unknown";
+        $result->{compiler_mver} = 0;
+        $result->{cxx_std} = "c++11";
+    }
+
+    return $result;
+}
+
+my $CXX = defined $ARGV[0] ? $ARGV[0] : "g++";
+
+my $result = CxxCheck($CXX);
+
+print "$result->{compiler_id} $result->{compiler_mver} $result->{cxx_std}\n";

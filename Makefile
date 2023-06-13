@@ -6,6 +6,7 @@ PROG = \
 	smartbuild \
 	smartbuildrev \
 	smartbuildcfg \
+	smartcxxcheck \
 	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
