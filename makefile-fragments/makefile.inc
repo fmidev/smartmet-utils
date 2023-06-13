@@ -47,29 +47,25 @@ PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 82 81, /usr/proj$(ver)/lib/
 
 # Compiler flags
 
+__SMARTCXXCHECK__ ?= smartcxxcheck
+
 OPTIMIZE ?= -O2
 GCC_DIAG_COLOR ?= always
 
-CXX_VERSION_STRING := $(shell $(CXX) --version 2>/dev/null | head -n 1)
+__CXX_INFO__ := $(shell $(__SMARTCXXCHECK__) $(CXX))
 
-ifneq ($(CXX_VERSION_STRING),)
+ifneq ($(word 1, $(__CXX_INFO__)),unknown)
 
-CXX_ID_ := $(shell echo "$(CXX_VERSION_STRING)" | sed -e 's:[\ -].*::')
-
-ifneq ($(filter $(CXX_ID_), clang),)
-  USE_CLANG=yes
-  CXX_STD ?= c++17
+ifeq ($(word 1, $(__CXX_INFO__)),clang++)
+  USE_CLANG := yes;
+  CXX_STD ?= $(word 3, $(__CXX_INFO__))
+  FLAGS += --gcc-toolchain=/usr
 else
-  GCC_VERSION := $(shell $(CXX) -dumpversion 2>/dev/null)
-  GCC_MAJOR := $(shell echo $(GCC_VERSION) | sed -e 's:\..*::')
-  USE_CLANG=no
-  ifeq ($(GCC_MAJOR),)
-    $(error Failed to query compiler version: $(CXX) -dumpversion)
-  endif
-  ifeq ($(filter $(GCC_MAJOR), 6 7 8 9 10 11 12),)
-    CXX_STD ?= c++11
+  ifeq ($(word 1, $(__CXX_INFO__)),g++)
+    USE_CLANG := no;
+    CXX_STD ?= $(word 3, $(__CXX_INFO__))
   else
-    CXX_STD ?= c++17
+    $(error Failed to recognize compiler version (CXX=$(CXX)))
   endif
 endif
 

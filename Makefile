@@ -1,5 +1,7 @@
 MODULE = utils
 
+__SMARTCXXCHECK__ := ./smartcxxcheck
+
 include makefile-fragments/makefile.inc
 
 PROG = \
