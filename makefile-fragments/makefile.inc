@@ -83,7 +83,7 @@ PACKAGES_MISSING =
 ifeq ($(USE_CLANG), yes)
   FLAGS_DEBUG += -Wshadow -Wweak-vtables -Wzero-as-null-pointer-constant
   # clang does not by default provide parameter --build-id to linker. Add it directly
-  LDFLAGS += -Wl,--build-id=sha1
+  LDFLAGS += --gcc-toolchain=/usr -Wl,--build-id=sha1
 endif
 
 # Sanitizer support
