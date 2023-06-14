@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 23.4.28
-Release: 2%{?dist}.fmi
+Version: 23.6.14
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -62,6 +62,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Jun 14 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.14-1.fmi
+- Update supported compiler feature detection in makefile.inc
+
 * Fri Apr 28 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.4.28-2.fmi
 - Fix typo in smartbuild script
 
