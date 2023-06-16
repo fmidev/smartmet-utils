@@ -829,6 +829,7 @@ sub help
     print "  --clang              - use clang++ instead of g++\n";
     print "  --verbose            - output some extra information\n";
     print "  --separate-logs      - write module build, test and install output to separate files\n";
+    print "  --https              - use HTTPS instead of git:// for github.com\n";
     print "\n";
 }
 
@@ -859,7 +860,8 @@ sub handle_params
         'buildep'              => \$param{builddep},
         'clang'                => \$param{clang},
         'verbose'              => \$param{verbose},
-        'separate-logs'        => \$param{separate_logs}
+        'separate-logs'        => \$param{separate_logs},
+        'https'                => \$param{https}
         );
 
     my $config;
@@ -978,12 +980,17 @@ sub handle_params
 
     my $settings;
     foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
-             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs') {
+             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs',
+             'https') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
             $settings->{$_} = 0;
         }
+    }
+
+    if ($settings->{https}) {
+        $::base_url = 'https://github.com/fmidev';
     }
 
     # TODO: report errors on conflicts
