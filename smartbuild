@@ -560,6 +560,7 @@ sub build_and_install_module($)
     if ($::settings->{separate_logs}) {
         make_path("$::workspace/log");
         $output_redirect_new = ">$::workspace/log/$module.log 2>&1";
+        system("cat /dev/null $output_redirect_new");
         $output_redirect_append = ">>$::workspace/log/$module.log 2>&1";
     }
 
@@ -576,13 +577,13 @@ sub build_and_install_module($)
     print "==============================================================================\n";
     close $fh;
 
-    $cmd = "git -C $mirror_dir archive --format=tar $rev: | tar -C $tmp -x";
+    $cmd = "git -C $mirror_dir archive --format=tar $rev: | tar -C $tmp -x $output_redirect_append";
     print "Execute: $cmd\n";
     system($cmd) == 0
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
 
     if ($::settings->{builddep}) {
-        $cmd = "sudo $::builddep $tmp/$spec";
+        $cmd = "sudo $::builddep $tmp/$spec $output_redirect_append";
         print "Execute: $cmd\n";
         if (system($cmd) != 0) {
             print "### Failed to satisfy build dependencies of $module\n";
@@ -592,7 +593,7 @@ sub build_and_install_module($)
 
     my $make_options = join(' ', @::make_options);
     if ($::settings->{release_rpms}) {
-        $cmd = "make -C $tmp rpm $make_options $output_redirect_new";
+        $cmd = "make -C $tmp rpm $make_options $output_redirect_append";
         if (system($cmd) == 0) {
             $::modules{$module}->{build} = 1;
         } else {
@@ -605,7 +606,7 @@ sub build_and_install_module($)
         my @noarch_rpms = glob("$::noarch_rpm_dir/$module*$ver.*.rpm");
         my @x86_64_rpms = glob("$::x86_64_rpm_dir/$module*$ver.*.rpm");
 
-        $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms));
+        $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms)).$output_redirect_append;
         print "Execute: $cmd\n";
         if (execute_cmd("$cmd") == 0) {
 	    $::modules{$module}->{install} = 1;
@@ -615,7 +616,7 @@ sub build_and_install_module($)
             return 0;
         }
     } else {
-        $cmd = "make -j $::num_cpus -C $tmp $make_options $output_redirect_new";
+        $cmd = "make -j $::num_cpus -C $tmp $make_options $output_redirect_append";
         print "Execute: $cmd\n";
         if (execute_cmd($cmd) == 0) {
             $::modules{$module}->{build} = 1;
