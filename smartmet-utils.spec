@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 23.6.14
+Version: 23.6.16
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -62,6 +62,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Jun 16 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.16-1.fmi
+- smartbuild: update
+
 * Wed Jun 14 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.14-1.fmi
 - Update supported compiler feature detection in makefile.inc
 
