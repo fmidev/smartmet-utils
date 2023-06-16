@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 23.6.16
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -62,6 +62,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Jun 16 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.16-2.fmi
+- smartbuild: improve output redirection to files when --separate-logs is provided
+
 * Fri Jun 16 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.16-1.fmi
 - smartbuild: update
 
