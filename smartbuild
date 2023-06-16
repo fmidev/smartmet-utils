@@ -858,7 +858,7 @@ sub handle_params
         'clear-private=s@'     => \$param{clear_private},
         'asan'                 => \$param{asan},
         'tsan'                 => \$param{tsan},
-        'buildep'              => \$param{builddep},
+        'builddep'             => \$param{builddep},
         'clang'                => \$param{clang},
         'verbose'              => \$param{verbose},
         'separate-logs'        => \$param{separate_logs},
