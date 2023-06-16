@@ -256,6 +256,18 @@ sub version_to_num($)
     return $result;
 }
 
+sub cat($)
+{
+    my $fd;
+    my $fn = shift;
+    if (open $fd, "<", $fn) {
+        while (<$fd>) {
+            print $_;
+        }
+        close $fd;
+    }
+}
+
 sub get_module_name($)
 {
     my $module = shift;
@@ -508,15 +520,25 @@ sub check_available($)
 {
     my $module = get_module_name(shift);
 
-    return unless(defined($::pkg_man));
+    if (not defined $::pkg_man) {
+        return 1;
+    }
 
     if (defined($::available{$module})) {
         my $id1 = version_to_num($::available{$module});
         my $id2 = version_to_num($::modules{$module}->{version});
         if (defined($id1) and defined($id2) and ($id1 > $id2)) {
-            die "Available version $::available($module) of $module is newer than one provided".
-                " by GIT repository ($::modules{$module}->{version})";
+            print("ERROR: Available version $::available($module) of $module is newer than one provided".
+                  " by GIT repository ($::modules{$module}->{version})");
+            return 0;
         }
+    }
+
+    my $install_output_fn = undef;
+    my $install_output_redirect = "";
+    if ($::settings->{separate_logs}) {
+        $install_output_fn = "log/install-$module.log";
+        $install_output_redirect = " >$install_output_fn 2>&1";
     }
 
     if (defined($::available{$module}) and ($::available{$module} eq $::modules{$module}->{version})) {
@@ -529,15 +551,25 @@ sub check_available($)
                 print "Current version $::modules{$module}->{version} found in repository --> upgrading to it\n";
                 $cmd = "sudo $::pkg_man -y upgrade $module".'*';
             } else {
-                return;
+                return 1;
             }
         } else {
             print "Current version $::modules{$module}->{version} found in repository --> installing it\n";
             $cmd = "sudo $::pkg_man -y install $module".'*';
         }
+        $cmd = $cmd.$install_output_redirect;
         print "Executing: $cmd\n";
-        system($cmd) == 0 or die "Failed: $!";
-        $::installed{$module} = $::available{$module};
+        if (system($cmd) == 0) {
+            return 1;
+        } else {
+            print "ERROR: command '$cmd' failed\n";
+            if (defined($install_output_fn)) {
+                cat ($install_output_fn);
+            }
+            return 0;
+        }
+    } else {
+        return 1;
     }
 }
 
@@ -705,9 +737,9 @@ sub build_and_install_module_rpms_recursive
         return $ret_code;
     }
 
-    if ($ret_code) {
-        check_available($module);
+    $ret_code = check_available($module);
 
+    if ($ret_code) {
         if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
 
             if (defined($::installed{$module})) {
@@ -785,7 +817,6 @@ sub build_and_install_module_recursive
     }
 
     if ($ret_code) {
-        check_available($module);
 
         print "BUILDING: $dep_path\n";
         if (build_and_install_module($module) == 0) {
