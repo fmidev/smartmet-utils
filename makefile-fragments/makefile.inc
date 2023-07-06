@@ -43,7 +43,9 @@ plugindir ?= $(datadir)/smartmet/plugins
 
 SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 330, /usr/sqlite$(ver)/lib/pkgconfig))
 SPATIALITE_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 43 50, /usr/libspatialite$(ver)/lib/pkgconfig))
-PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 82 81, /usr/proj$(ver)/lib/pkgconfig))
+PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 90 82 81, /usr/proj$(ver)/lib/pkgconfig /usr/proj$(ver)/lib64/pkgconfig))
+__GDAL_INCLUDES_SEARCH := $(wildcard /usr/gdal35/include/gdal.h) $(wildcard /usr/gdal34/include/gdal.h)
+__GEOS_INCLUDES_SEARCH := $(wildcard /usr/geos311/include/geos/version.h) $(wildcard /usr/geos310/include/geos/version.h)
 
 # Compiler flags
 
@@ -200,24 +202,25 @@ endif
 
 ifneq ($(filter gdal,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out gdal, $(REQUIRES_LEFT))
-  ifneq "$(wildcard /usr/gdal34/include)" ""
-    INCLUDES += -isystem /usr/gdal34/include
-    GDAL_LIBS = -L$(PREFIX)/gdal34/lib -lgdal
+  ifneq "$(__GDAL_INCLUDES_SEARCH)" ""
+    __GDAL_DN := $(word 2, $(subst /, ,$(firstword $(__GDAL_INCLUDES_SEARCH))))
+    INCLUDES += -isystem /usr/$(__GDAL_DN)/include
+    GDAL_LIBS := -L$(PREFIX)/$(__GDAL_DN)/lib -lgdal
   else
     INCLUDES += -isystem /usr/include/gdal
-    GDAL_LIBS = -lgdal
+    GDAL_LIBS := -lgdal
   endif
   REQUIRED_LIBS += $(GDAL_LIBS)
 endif
 
 ifneq ($(filter geos,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out geos, $(REQUIRES_LEFT))
-  ifneq "$(wildcard /usr/geos310/bin/geos-config)" ""
+  ifneq "$(__GEOS_INCLUDES_SEARCH)" ""
+    __GEOS_DN :=  $(word 2, $(subst /, ,$(firstword $(__GEOS_INCLUDES_SEARCH))))
     # Avoid unresolved references with geos-3.10 (src/inline.cpp dropped from sources)
     FLAGS += -DGEOS_INLINE
-    INCLUDES += $(shell /usr/geos310/bin/geos-config --cflags 2>/dev/null)
-#   /usr/geos310/bin/geos-config --libs is broken
-    GEOS_LIBS = -L /usr/geos310/lib64 -lgeos
+    INCLUDES += $(shell /usr/$(__GEOS_DN)/bin/geos-config --cflags 2>/dev/null)
+    GEOS_LIBS = -L /usr/$(__GEOS_DN)/lib64 -lgeos
   else
     ifneq "$(wildcard /usr/bin/geos-config)" ""
       GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
@@ -346,11 +349,16 @@ endif
 
 ifneq ($(filter libpq,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out libpq, $(REQUIRES_LEFT))
+  ifneq "$(wildcard /usr/pgsql-15/include)" ""
+    INCLUDES += -isystem /usr/pgsql-15/include
+    PQ_LIBS = -Wl,-rpath=$(PREFIX)/pgsql-15/lib -L$(PREFIX)/pgsql-15/lib -lpq
+  else
   ifneq "$(wildcard /usr/pgsql-13/include)" ""
     INCLUDES += -isystem /usr/pgsql-13/include
     PQ_LIBS = -Wl,-rpath=$(PREFIX)/pgsql-13/lib -L$(PREFIX)/pgsql-13/lib -lpq
   else
     PQ_LIBS = -lpq
+  endif
   endif
   REQUIRED_LIBS += $(PQ_LIBS)
 endif
