@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 23.6.16
-Release: 2%{?dist}.fmi
+Version: 23.7.7
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -62,6 +62,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Jul  7 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.7.7-1.fmi
+- Prefer gdal-3.5, geos-3.11, proj-9.0, postgresql-15 when found
+
 * Fri Jun 16 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.6.16-2.fmi
 - smartbuild: improve output redirection to files when --separate-logs is provided
 
