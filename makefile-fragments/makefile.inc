@@ -202,28 +202,44 @@ endif
 
 ifneq ($(filter gdal,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out gdal, $(REQUIRES_LEFT))
-  ifneq "$(__GDAL_INCLUDES_SEARCH)" ""
+  ifneq "$(words $(__GDAL_INCLUDES_SEARCH))" "0"
     __GDAL_DN := $(word 2, $(subst /, ,$(firstword $(__GDAL_INCLUDES_SEARCH))))
     INCLUDES += -isystem /usr/$(__GDAL_DN)/include
     GDAL_LIBS := -L$(PREFIX)/$(__GDAL_DN)/lib -lgdal
+    GDAL_DIR := /usr/$(__GDAL_DN)
   else
-    INCLUDES += -isystem /usr/include/gdal
-    GDAL_LIBS := -lgdal
+    ifneq "$(wildcard /usr/bin/gdal-config)" ""
+      # gdal-config is intentionally not used here
+      INCLUDES += -isystem /usr/include/gdal
+      GDAL_LIBS := -lgdal
+      GDAL_DIR := /usr
+    else
+      REQUIRES_MISSING += gdal
+    endif
+  endif
+  ifneq "$(GDAL_DIR)" ""
+    ifneq "$(shell $(GDAL_DIR)/bin/gdal-config --ogr-enabled)" "yes"
+      $(error GDAL detected at $(GDAL_DIR), but is built without OGR support)
+    endif
   endif
   REQUIRED_LIBS += $(GDAL_LIBS)
 endif
 
 ifneq ($(filter geos,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out geos, $(REQUIRES_LEFT))
-  ifneq "$(__GEOS_INCLUDES_SEARCH)" ""
+  ifneq "$(words $(__GEOS_INCLUDES_SEARCH))" "0"
     __GEOS_DN :=  $(word 2, $(subst /, ,$(firstword $(__GEOS_INCLUDES_SEARCH))))
+    GEOS_DIR := /usr/$(__GEOS_DN)
     # Avoid unresolved references with geos-3.10 (src/inline.cpp dropped from sources)
     FLAGS += -DGEOS_INLINE
-    INCLUDES += $(shell /usr/$(__GEOS_DN)/bin/geos-config --cflags 2>/dev/null)
-    GEOS_LIBS = -L /usr/$(__GEOS_DN)/lib64 -lgeos
+    INCLUDES += $(shell $(GEOS_DIR)/bin/geos-config --cflags 2>/dev/null)
+    GEOS_LIBS = -L$(GEOS_DIR)/lib64 -lgeos
   else
     ifneq "$(wildcard /usr/bin/geos-config)" ""
-      GEOS_LIBS = $(shell /usr/bin/geos-config --libs 2>/dev/null)
+      # geos-config is intentionally not used here
+      GEOS_LIBS = -lgeos
+    else
+      REQUIRES_MISSING += geos
     endif
   endif
   REQUIRED_LIBS += $(GEOS_LIBS)
