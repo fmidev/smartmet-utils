@@ -751,7 +751,7 @@ sub build_and_install_module_rpms_recursive
                }
             }
 
-            print "BUILDING: $dep_path.$::modules{$module}->{version}\n";
+            print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
             if (build_and_install_module($module)) {
                 export_rpms($module);
             } else {
