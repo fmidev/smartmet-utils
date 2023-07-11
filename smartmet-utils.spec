@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 23.7.7
+Version: 23.7.11
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -62,6 +62,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Jul 11 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.7.11-1.fmi
+- Update makefile.inc
+
 * Fri Jul  7 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.7.7-1.fmi
 - Prefer gdal-3.5, geos-3.11, proj-9.0, postgresql-15 when found
 
