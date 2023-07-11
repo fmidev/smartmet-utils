@@ -44,7 +44,7 @@ plugindir ?= $(datadir)/smartmet/plugins
 SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 330, /usr/sqlite$(ver)/lib/pkgconfig))
 SPATIALITE_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 43 50, /usr/libspatialite$(ver)/lib/pkgconfig))
 PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 90 82 81, /usr/proj$(ver)/lib/pkgconfig /usr/proj$(ver)/lib64/pkgconfig))
-__GDAL_INCLUDES_SEARCH := $(foreach ver, 37 36 35 34, $(wildcard /usr/gdal$(ver)/include/gdal.h))
+__GDAL_INCLUDES_SEARCH := $(foreach ver, 35 34, $(wildcard /usr/gdal$(ver)/include/gdal.h))
 __GEOS_INCLUDES_SEARCH := $(foreach ver, 311 310, $(wildcard /usr/geos$(ver)/include/geos/version.h))
 
 # Compiler flags
