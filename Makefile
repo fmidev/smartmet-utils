@@ -12,7 +12,8 @@ PROG = \
 	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
-	smartpngdiff
+	smartpngdiff \
+	smartrpmsort
 
 .PHONY: rpm
 

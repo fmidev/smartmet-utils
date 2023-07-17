@@ -34,6 +34,7 @@ Provides: smartbuildrev
 Provides: smartmkrelease
 Provides: smartmktag
 Provides: smartpngdiff
+Provides: smartrpmsort
 Provides: smartmet-makefile-inc
 Requires: make bash perl
 Requires: ImageMagick
@@ -58,6 +59,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
 %{_bindir}/smartpngdiff
+%{_bindir}/smartrpmsort
 %{_datadir}/smartmet/devel/makefile.inc
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
