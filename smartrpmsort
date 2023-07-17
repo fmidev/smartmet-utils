@@ -21,26 +21,29 @@ my $ok = 1;
 
 for my $path (glob "$dir/*.rpm") {
     my $fn = basename $path;
-    $fn =~ m:^(.+?)-([0-9\.]+)-([0-9]+).[^-]*$:;
-    #print "'$fn' '$1' '$2' '$3' '$4'\n";
+    $fn =~ m:^(.+?)-([0-9\.]+)-([0-9]+)\.(el\d+_\d+|el\d+|)[^-]*:;
     my $name = $1;
     my $version = $2;
     my $release = $3;
+    my $rhel = $4;
     if ($version =~ m/^(\d+)\.(\d+)\.(\d+)$/) {
-        my $sort_key = sprintf("%05d%05d%05d%05d", $1, $2, $3, $release);
+        my $sort_key = sprintf("%05d%05d%05d%05d-%s", $1, $2, $3, $release, $rhel);
+        #print "'$fn' name='$name' ('$1','$2','$3','$release','$rhel') -> sort_key='$sort_key'\n";
         $packages{$name}{$sort_key} = $fn;
     } else {
         print "Failed to parse version string '$version' for '$fn'\n";
     }
 }
 
-for my $name (keys %packages) {
+#print Dumper(\%packages);
+
+for my $name (sort keys %packages) {
     my $versions_ref = $packages{$name};
     my %versions = %$versions_ref;
     my @keys = reverse sort keys %versions;
     print "\n";
     print "LEAVE $versions{$keys[0]} where it is\n";
-    for (my $i = 1; $i < $#keys; $i++) {
+    for (my $i = 1; $i <= $#keys; $i++) {
         if ( ! -d $archive_dir ) {
             mkdir($archive_dir) or die "Failed to create directory $archive_dir: $!";
         }
