@@ -537,7 +537,7 @@ sub check_available($)
     my $install_output_fn = undef;
     my $install_output_redirect = "";
     if ($::settings->{separate_logs}) {
-        $install_output_fn = "log/install-$module.log";
+        $install_output_fn = "workspace/log/install-$module.log";
         $install_output_redirect = " >$install_output_fn 2>&1";
     }
 
