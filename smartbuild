@@ -626,7 +626,7 @@ sub build_and_install_module($)
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
 
     if ($::settings->{builddep}) {
-        $cmd = "sudo $::builddep $tmp/$spec $output_redirect_append";
+        $cmd = "sudo $::builddep -y $tmp/$spec $output_redirect_append";
         print "Execute: $cmd\n";
         if (system($cmd) != 0) {
             print "### Failed to satisfy build dependencies of $module\n";
