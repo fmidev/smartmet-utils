@@ -251,7 +251,10 @@ sub version_to_num($)
     my $ver = shift;
     my $result = 0;
     if ($ver =~ m/^(\d{1,2})\.(\d{1,2})\.(\d{1,2})-(\d{1,3})$/) {
-        $result = sprintf("%02d%02d%02d%03d", $1, $2, $3, $4);
+        $result = sprintf("%02d%02d%02d%02d", $1, $2, $3, $4);
+    } elsif ($ver =~ m/^(\d+)\.(\d+)-(\d+)$/) {
+        $result = sprintf("%02d%02d00%02d", $1, $2, $3);
+        print "'$ver' => $result\n";
     }
     return $result;
 }
