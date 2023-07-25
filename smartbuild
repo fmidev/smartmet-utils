@@ -161,6 +161,9 @@ sub get_installed_versions
 
 sub get_available_versions
 {
+    #
+    # FIXME: handle modules which name does not begin with 'smartmet-', but which are defined in configuration
+    #
     my $input;
 
     my $cmd = "$::get_available 'smartmet*' 2>/dev/null";
