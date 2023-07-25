@@ -322,8 +322,8 @@ sub get_repo_name($)
 {
     my $module = get_module_name(shift);
 
-    if (defined($::config{modules}->{module})) {
-        return $::config{modules}->{$module}->{repo};
+    if (defined($::config->{modules}->{$module})) {
+        return $::config->{modules}->{$module}->{repo};
     }
 
     if (defined($::modules{$module})) {
