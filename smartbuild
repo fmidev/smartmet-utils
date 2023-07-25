@@ -473,7 +473,7 @@ sub extract_requires($$$)
             my $data = $2;
             $data =~ s/[\s=><].*$//;
             $data =~ s/-devel$//;
-            if ($data =~ m/^smartmet-/) {
+            if ($data =~ m/^smartmet-/ or defined($::config->{module})) {
                 if (not defined $::default_ignore{$data}) {
                     if ($type eq "Requires") {
                         push (@requires, $data);
