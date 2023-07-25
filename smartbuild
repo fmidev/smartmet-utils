@@ -524,11 +524,13 @@ sub check_available($)
         return 1;
     }
 
+    $::modules{$module}->{requires_build} = 0;
+
     if (defined($::available{$module})) {
         my $id1 = version_to_num($::available{$module});
         my $id2 = version_to_num($::modules{$module}->{version});
         if (defined($id1) and defined($id2) and ($id1 > $id2)) {
-            print("ERROR: Available version $::available($module) of $module is newer than one provided".
+            print("ERROR: Available version $::available{$module} of $module is newer than one provided".
                   " by GIT repository ($::modules{$module}->{version})");
             return 0;
         }
@@ -548,13 +550,13 @@ sub check_available($)
         if (defined($::installed{$module})) {
             my $id_installed = version_to_num($::installed{$module});
             if (defined($id_installed) and defined($id_available) and $id_available > $id_installed) {
-                print "Current version $::modules{$module}->{version} found in repository --> upgrading to it\n";
+                print "Current version of $module $::modules{$module}->{version} found in repository --> upgrading to it\n";
                 $cmd = "sudo $::pkg_man -y upgrade $module".'*';
             } else {
                 return 1;
             }
         } else {
-            print "Current version $::modules{$module}->{version} found in repository --> installing it\n";
+            print "Current version of $module $::modules{$module}->{version} found in repository --> installing it\n";
             $cmd = "sudo $::pkg_man -y install $module".'*';
         }
         $cmd = $cmd.$install_output_redirect;
@@ -569,6 +571,7 @@ sub check_available($)
             return 0;
         }
     } else {
+        $::modules{$module}->{requires_build} = 1;
         return 1;
     }
 }
@@ -751,12 +754,14 @@ sub build_and_install_module_rpms_recursive
                }
             }
 
-            print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
-            if (build_and_install_module($module)) {
-                export_rpms($module);
-            } else {
-                push (@::failed_modules, $module);
-                $ret_code = 0;
+            if ($::modules{$module}->{requires_build}) {
+                print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
+                if (build_and_install_module($module)) {
+                    export_rpms($module);
+                } else {
+                    push (@::failed_modules, $module);
+                    $ret_code = 0;
+                }
             }
         }
     } else {
