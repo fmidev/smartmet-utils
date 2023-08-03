@@ -44,14 +44,16 @@ Requires: perl-Getopt-Long
 Requires: perl-JSON-PP
 #TestRequires: bc
 #TestRequires: gcc-c++
-#testRequires: geos311-devel
+#TtestRequires: geos311-devel
 #TestRequires: gdal35-devel
+#TestRequires: libcurl-devel
 
 %if 0%{?rhel} && 0%{rhel} == 7
 #TestRequires: proj72-devel
-%endif
+#TestdRequires: sqlite33-devel
 %if 0%{?rhel} && 0%{rhel} >= 8
 #TestRequires: proj90-devel
+#TestRequires: sqlite-devel
 %endif
 
 %description devel

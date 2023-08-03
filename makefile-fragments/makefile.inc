@@ -153,6 +153,15 @@ ifneq ($(filter spatialite,$(REQUIRES)),)
   endif
 endif
 
+ifneq ($(filter spatialite,$(REQUIRES)),)
+  ifeq ($(filter sqlite3,$(REQUIRES)),)
+    REQUIRES := $(REQUIRES) sqlite3
+  endif
+  ifeq ($(filter libcurl,$(REQUIRES)),)
+    REQUIRES := $(REQUIRES) libcurl
+  endif
+endif
+
 ifneq ($(filter cairo,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out cairo, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags cairo 2>/dev/null)
@@ -377,6 +386,17 @@ ifneq ($(filter libpq,$(REQUIRES)),)
   endif
   endif
   REQUIRED_LIBS += $(PQ_LIBS)
+endif
+
+ifneq ($(filter libcurl,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out libcurl, $(REQUIRES_LEFT))
+  ifneq "$(shell pkg-config --atleast-version=7.61.0 libcurl && echo OK)" "OK"
+     REQUIRES_MISSING := $(REQUIRES_MISSING) libcurl>=7.61.0
+  else
+     INCLUDES += $(shell pkg-config --cflags curl)
+     LIBCURL_LIBS += $(shell pkg-config --libs curl)
+  endif
+  REQUIRED_LIBS += $(LIBCURL_LIBS)
 endif
 
 # For testing only
