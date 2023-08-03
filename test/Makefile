@@ -4,7 +4,9 @@ CLANG_VER := clang version 11.0.0 (Red Hat 11.0.0-1.module+el8.4.0+8598+a071fcd5
 
 export __SMARTCXXCHECK__ := ../smartcxxcheck
 
-test:
+test:	test-detection test-pngcomp test-check-proj test-check-gdal test-check-geos
+
+test-detection:
 	@echo =====================================================================
 	@echo = Tests below contains also error condition tests                   =
 	@echo = One should get error messages from these tests,                   =
@@ -27,3 +29,12 @@ test:
 
 test-pngcomp:
 	$(MAKE) -C pngdiff test
+
+test-check-proj:
+	$(MAKE) -f check-proj.mk
+
+test-check-gdal:
+	$(MAKE) -f check-gdal.mk
+
+test-check-geos:
+	$(MAKE) -f check-geos.mk
