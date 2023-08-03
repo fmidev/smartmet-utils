@@ -44,7 +44,7 @@ Requires: perl-Getopt-Long
 Requires: perl-JSON-PP
 #TestRequires: bc
 #TestRequires: gcc-c++
-#TtestRequires: geos311-devel
+#TestRequires: geos311-devel
 #TestRequires: gdal35-devel
 #TestRequires: libcurl-devel
 
