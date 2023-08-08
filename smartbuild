@@ -581,6 +581,37 @@ sub check_available($)
     }
 }
 
+sub print_summary($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = get_mirror_dir($module);
+    my $rev = $::modules{$module}->{"git_rev"};
+    my $ver = $::modules{$module}->{"version"};
+
+    my $cmd = "git -C $mirror_dir log -1 $rev";
+    my $fh;
+    open $fh, "$cmd |" or die "$cmd | : $!";
+    print "==============================================================================\n";
+    while (<$fh>) {
+        chomp;
+        print "$module: $_\n";
+    }
+    print "------------------------------------------------------------------------------\n";
+    print "$module: current version in GIT: $ver\n";
+    if (defined($::installed{$module})) {
+        print "$module: installed: $::installed{$module}\n";
+    } else {
+        print "$module: installed: none\n";
+    }
+    if (defined($::available{$module})) {
+        print "$module: available: $::available{$module}\n";
+    } else {
+        print "$module: available: none\n";
+    }
+    print "==============================================================================\n";
+    close $fh;
+}
+
 sub build_and_install_module($)
 {
     not defined($::canceled) or die "Canceled";
@@ -608,16 +639,7 @@ sub build_and_install_module($)
 
     $::modules{$module}->{install} = -1;
 
-    $cmd = "git -C $mirror_dir log -1 $rev";
-    my $fh;
-    open $fh, "$cmd |" or die "$cmd | : $!";
-    print "==============================================================================\n";
-    while (<$fh>) {
-        chomp;
-        print "$module: $_\n";
-    }
-    print "==============================================================================\n";
-    close $fh;
+    print_summary $module;
 
     $cmd = "git -C $mirror_dir archive --format=tar $rev: | tar -C $tmp -x $output_redirect_append";
     print "Execute: $cmd\n";
