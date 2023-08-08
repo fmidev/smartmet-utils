@@ -161,12 +161,16 @@ sub get_installed_versions
 
 sub get_available_versions
 {
-    #
-    # FIXME: handle modules which name does not begin with 'smartmet-', but which are defined in configuration
-    #
     my $input;
 
-    my $cmd = "$::get_available 'smartmet*' 2>/dev/null";
+    my $cmd = "$::get_available 'smartmet*'";
+    my $modules_ref = $::config->{modules};
+    foreach (keys %$modules_ref) {
+        if (not m/^smartmet-/) {
+            $cmd = $cmd . " '$_'";
+        }
+    }
+    $cmd = $cmd . " 2>/dev/null";
     open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
 
     my $phase = 0;
@@ -177,16 +181,14 @@ sub get_available_versions
     # Read YUM or DNF response into an array
     while (<$input>) {
         chomp;
-        $phase = 1 if (m/^smartmet/);
-        if ($phase == 1) {
-            my @parts = split;
+        my @parts = split;
+        if ($#parts == 2 and $parts[2] =~ m/^smartmet-/ and not $parts[2] =~ m/debug/) {
             push(@words, @parts);
         }
     }
     close($input);
 
     for (my $i = 0; $i <= $#words; $i += 3) {
-        die "Error parsing $::pkg_man output" unless ($words[$i] =~ m/^smartmet*/);
         my $name = $words[$i];
         my $ver = $words[$i + 1];
         next if ($name =~ m/(?:debugsource|debuginfo)/);
