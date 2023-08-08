@@ -141,7 +141,7 @@ sub execute_cmd($)
 sub get_installed_versions
 {
     my $input;
-    open($input, "rpm -qa 'smartmet*' |") or die "Failed to run rpm -qa";
+    open($input, "rpm -qa '*' |") or die "Failed to run rpm -qa";
     while (<$input>) {
         chomp;
         if (m/-(?:debuginfo|debugsource)-/) {
@@ -257,7 +257,6 @@ sub version_to_num($)
         $result = sprintf("%02d%02d%02d%02d", $1, $2, $3, $4);
     } elsif ($ver =~ m/^(\d+)\.(\d+)-(\d+)$/) {
         $result = sprintf("%02d%02d00%02d", $1, $2, $3);
-        print "'$ver' => $result\n";
     }
     return $result;
 }
