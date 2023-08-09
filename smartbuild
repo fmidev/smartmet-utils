@@ -203,7 +203,7 @@ sub get_system_info
 {
     my $rhel_ver_raw = `rpm --eval '%{rhel}' 2>/dev/null`;
     $::rhel_ver = ($rhel_ver_raw =~ m/\s*\d+\s*/) ? int($rhel_ver_raw) : -1;
-    my $repo_config = "--disablerepo='*' --enablerepo='smartmet-*' --disablerepo='*staging*' --disablerepo='*debug*'";
+    my $repo_config = "--disablerepo='*' --enablerepo='smartmet-*' --disablerepo='*staging*' --disablerepo='*debug*' --disablerepo='smartmet-open-ext*'";
     if ($::rhel_ver == 7) {
         $::pkg_man = "yum";
         $::debug_dir = "rhel/7/beta";
