@@ -946,6 +946,9 @@ sub handle_params
     die "Use command line option --create-workspace to create workspace at first use"
         unless -d "workspace/mirror";
 
+    if (! -d "workspace/log" ) { mkdir("workspace/log"); }
+    if (! -d "workspace/export" ) { mkdir("workspace/export"); }
+
     if (defined($param{default_config})) {
         not defined($param{config_file}) or die "Cannot specify both --config and --default-config";
         foreach my $name (keys %::default_modules) {
