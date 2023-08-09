@@ -904,6 +904,7 @@ sub help
     print "  --separate-logs      - write module build, test and install output to separate files\n";
     print "  --https              - use HTTPS instead of git:// for github.com\n";
     print "  --ignore-installed   - build packages newer than in smartmet-* repos even if already installed locally\n";
+    print "  --dump-available     - only dump information about packages found in SmartMet RPM repos\n";
     print "\n";
 }
 
@@ -936,7 +937,8 @@ sub handle_params
         'verbose'              => \$param{verbose},
         'separate-logs'        => \$param{separate_logs},
         'https'                => \$param{https},
-        'ignore-installed'     => \$param{ignore_installed}
+        'ignore-installed'     => \$param{ignore_installed},
+        'dump-available'       => \$param{dump_available}
         );
 
     my $config;
@@ -1056,7 +1058,7 @@ sub handle_params
     my $settings;
     foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
              'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs',
-             'https', 'ignore_installed') {
+             'https', 'ignore_installed', 'dump_available') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
@@ -1106,6 +1108,13 @@ get_system_info;
 
 if ($::settings->{verbose}) {
     print Dumper(\$::settings, ['settings']);
+}
+
+if ($::settings->{dump_available}) {
+    foreach (sort keys %::available) {
+        printf("AVAILABLE: %-40s %s\n", $_, $::available{$_});
+    }
+    exit(0);
 }
 
 my $modules_ref = $::config->{modules};
