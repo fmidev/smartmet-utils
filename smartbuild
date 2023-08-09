@@ -319,7 +319,7 @@ sub export_rpms($)
         }
 
         make_path($dest);
-        print "MOVE: $rpm ==> $dest/$fn";
+        print "MOVE: $rpm ==> $dest/$fn\n";
         if ( -f "$dest/$fn" ) {
             unlink("$dest/$fn");
         }
@@ -540,7 +540,7 @@ sub check_available($)
         my $id2 = version_to_num($::modules{$module}->{version});
         if (defined($id1) and defined($id2) and ($id1 > $id2)) {
             print("ERROR: Available version $::available{$module} of $module is newer than one provided".
-                  " by GIT repository ($::modules{$module}->{version})");
+                  " by GIT repository ($::modules{$module}->{version})\n");
             return 0;
         }
     }
