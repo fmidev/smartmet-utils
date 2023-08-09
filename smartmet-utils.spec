@@ -78,12 +78,6 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
-* Wed Aug  9 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.8.9-2.fmi
-- More smartbuild fixes
-
-* Wed Aug  9 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.8.9-1.fmi
-- smartbuild updates
-
 * Mon Jul 17 2023 Andris Pavēnis <andris.pavenis@fmi.fi> 23.7.17-1.fmi
 - New script smartrpmsort
 
