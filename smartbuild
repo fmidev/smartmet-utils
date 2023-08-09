@@ -772,7 +772,9 @@ sub build_and_install_module_rpms_recursive
     $ret_code = check_available($module);
 
     if ($ret_code) {
-        if (!defined($::installed{$module}) or ($::installed{$module} ne $::modules{$module}->{"version"})) {
+        if (!defined($::installed{$module})
+            or $::settings->{ignore_installed}
+            or ($::installed{$module} ne $::modules{$module}->{"version"})) {
 
             if (defined($::installed{$module})) {
                if (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"})) {
@@ -899,6 +901,7 @@ sub help
     print "  --verbose            - output some extra information\n";
     print "  --separate-logs      - write module build, test and install output to separate files\n";
     print "  --https              - use HTTPS instead of git:// for github.com\n";
+    print "  --ignore-installed   - build packages newer than in smartmet-* repos even if already installed locally\n";
     print "\n";
 }
 
@@ -930,7 +933,8 @@ sub handle_params
         'clang'                => \$param{clang},
         'verbose'              => \$param{verbose},
         'separate-logs'        => \$param{separate_logs},
-        'https'                => \$param{https}
+        'https'                => \$param{https},
+        'ignore-installed'     => \$param{ignore_installed}
         );
 
     my $config;
@@ -1050,7 +1054,7 @@ sub handle_params
     my $settings;
     foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
              'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs',
-             'https') {
+             'https', 'ignore_installed') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
