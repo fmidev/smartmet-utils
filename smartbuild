@@ -167,10 +167,11 @@ sub get_available_versions
     my $modules_ref = $::config->{modules};
     foreach (keys %$modules_ref) {
         if (not m/^smartmet-/) {
-            $cmd = $cmd . " '$_'";
+            $cmd = $cmd . " '$_*'";
         }
     }
-    $cmd = $cmd . " 2>/dev/null";
+    $cmd = "LANG=en_US.utf8 ". $cmd . " 2>/dev/null";
+    print "Execute: $cmd\n";
     open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
 
     my $phase = 0;
@@ -202,24 +203,25 @@ sub get_system_info
 {
     my $rhel_ver_raw = `rpm --eval '%{rhel}' 2>/dev/null`;
     $::rhel_ver = ($rhel_ver_raw =~ m/\s*\d+\s*/) ? int($rhel_ver_raw) : -1;
+    my $repo_config = "--disablerepo='*' --enablerepo='smartmet-*' --disablerepo='*staging*' --disablerepo='*debug*'";
     if ($::rhel_ver == 7) {
         $::pkg_man = "yum";
         $::debug_dir = "rhel/7/beta";
         $::x86_64_dir = "rhel/7/beta";
         $::builddep = "yum-builddep";
-        $::get_available = "repoquery --disablerepo='*' --enablerepo='smartmet*' --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available = "repoquery $repo_config --queryformat='%{name} %{evr} %{repoid}'";
     } elsif ($::rhel_ver == 8) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/8/beta";
         $::x86_64_dir = "rhel/8/beta";
         $::builddep = "dnf builddep";
-        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif ($::rhel_ver == 9) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/9/debug";
         $::x86_64_dir = "rhel/9/x86_64";
         $::builddep = "dnf builddep";
-        $::get_available = "dnf --disablerepo='*' --enablerepo='smartmet*' repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif (not $::settings->{release_rpms}) {
     } else {
         die "Unsupported version '$::rhel_ver'";
