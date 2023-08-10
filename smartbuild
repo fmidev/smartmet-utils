@@ -195,6 +195,7 @@ sub get_available_versions
         next if ($name =~ m/(?:debugsource|debuginfo)/);
         $name =~ s/-devel$//;
         $ver =~ s/(-\d+)\..*/$1/;
+        $ver =~ s/[0-9]+://;
         $::available{$name} = $ver;
     }
 }
