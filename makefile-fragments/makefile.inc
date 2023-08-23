@@ -393,8 +393,8 @@ ifneq ($(filter libcurl,$(REQUIRES)),)
   ifneq "$(shell pkg-config --atleast-version=7.61.0 libcurl && echo OK)" "OK"
      REQUIRES_MISSING := $(REQUIRES_MISSING) libcurl>=7.61.0
   else
-     INCLUDES += $(shell pkg-config --cflags curl)
-     LIBCURL_LIBS += $(shell pkg-config --libs curl)
+     INCLUDES += $(shell pkg-config --cflags libcurl)
+     LIBCURL_LIBS += $(shell pkg-config --libs libcurl)
   endif
   REQUIRED_LIBS += $(LIBCURL_LIBS)
 endif
