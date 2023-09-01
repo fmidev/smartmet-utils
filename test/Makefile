@@ -4,7 +4,7 @@ CLANG_VER := clang version 11.0.0 (Red Hat 11.0.0-1.module+el8.4.0+8598+a071fcd5
 
 export __SMARTCXXCHECK__ := ../smartcxxcheck
 
-test:	test-detection test-pngcomp test-check-proj test-check-gdal test-check-geos
+test:	test-detection test-pngcomp test-check-proj test-check-gdal test-check-geos test-check-sqlite
 
 test-detection:
 	@echo =====================================================================
@@ -38,3 +38,6 @@ test-check-gdal:
 
 test-check-geos:
 	$(MAKE) -f check-geos.mk
+
+test-check-sqlite:
+	$(MAKE) -f check-sqlite.mk

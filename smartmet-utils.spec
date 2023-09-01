@@ -50,7 +50,7 @@ Requires: perl-JSON-PP
 
 %if 0%{?rhel} && 0%{rhel} == 7
 #TestRequires: proj72-devel
-#TestdRequires: sqlite33-devel
+#TestRequires: sqlite33-devel
 %endif
 
 %if 0%{?rhel} && 0%{rhel} >= 8

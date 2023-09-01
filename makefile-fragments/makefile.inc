@@ -324,6 +324,11 @@ ifneq ($(filter spatialite,$(REQUIRES)),)
   REQUIRED_LIBS += $(SPATIALITE_LIBS)
 endif
 
+ifneq ($(filter sqlite,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out sqlite, $(REQUIRES_LEFT))
+  REQUIRES := $(REQUIRES) sqlite3
+endif
+
 ifneq ($(filter sqlite3,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out sqlite3, $(REQUIRES_LEFT))
   # Search in /usr/sqlite330 at first
