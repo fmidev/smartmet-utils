@@ -49,6 +49,7 @@ use Data::Dumper;
     "smartmet-frontier"                     => {},
     "smartmet-tools-grid"                   => {},
     "smartmet-textgenapps"                  => {},
+    "smartmet-cropper"                      => {},
     );
 
 %::default_ignore = (
