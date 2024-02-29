@@ -133,6 +133,9 @@ sub execute_cmd($)
     if ($retcode & 127) {
         my $sig = $retcode & 127;
         die "Command $cmd terminated with signal $sig";
+        if ($sig == 2 || $sig == 3) {
+            exit(1);
+        }
     } else {
         $retcode >>= 8;
     }
