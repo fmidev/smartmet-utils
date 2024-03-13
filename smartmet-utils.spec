@@ -68,6 +68,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartbuild
 %{_bindir}/smartbuildcfg
 %{_bindir}/smartbuildrev
+%{_bindir}/smartbuildtmprpm
 %{_bindir}/smartcxxcheck
 %{_bindir}/smartmkciconfig
 %{_bindir}/smartmkrelease

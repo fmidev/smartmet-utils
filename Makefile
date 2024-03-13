@@ -7,6 +7,7 @@ include makefile-fragments/makefile.inc
 PROG = \
 	smartbuild \
 	smartbuildrev \
+	smartbuildtmprpm \
 	smartbuildcfg \
 	smartcxxcheck \
 	smartmkciconfig \
