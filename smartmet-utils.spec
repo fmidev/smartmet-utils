@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 24.3.13
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -79,6 +79,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Mar 13 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.3.13-2.fmi
+- Fix missing installation of new script
+
 * Wed Mar 13 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.3.13-1.fmi
 - New script smartbuildtmprpm and 1 bugfix
 
