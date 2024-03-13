@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.2.29
+Version: 24.3.13
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -78,6 +78,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Mar 13 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.3.13-1.fmi
+- New script smartbuildtmprpm and 1 bugfix
+
 * Thu Feb 29 2024 Mika Heiskanen <mika.heiskanen@fmi.fi> - 24.2.29-1.fmi
 - Added smartmet-cropper to smartbuild
 
