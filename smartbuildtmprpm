@@ -1,0 +1,57 @@
+#! /usr/bin/perl
+
+#
+#  Checks out required revision from GIT (current directory) into temporary directory
+#  and:
+#    1) Create temporaray version commit (new version) locally only
+#    2) Build new RPM
+#
+#  Can be for example be used for creating temporary builds for staging repo
+#
+#  Examples:
+#
+#  ./smartbuildtmprpm
+#       package top in current directory, use currently checked out revision
+#
+#  ./smartbuildtmprpm FOO
+#       package top in current directory, use revision FOO (for example tag FOO)
+#
+#  ./smartbuildtmprpm FOO BAR
+#       package top in directory BAR, use revision FOO (for example tag FOO)
+#
+use strict;
+use File::Temp qw/tempdir/;
+
+my $rev = "HEAD";
+my $top_opt = ".";
+if ($#ARGV == 0) {
+    $rev = $ARGV[0];
+} elsif ($#ARGV == 1) {
+    $top_opt = "-C $ARGV[1]"
+} elsif ($#ARGV > 1) {
+   die "No more than one argument expected";
+}
+
+my $build_top = tempdir(CLEANUP => 1);
+my $build_dir = $build_top;
+
+print("Build directory: $build_dir\n");
+
+my $cmd = "git clone $top_opt $build_top";
+print "Running: $cmd\n";
+system($cmd) == 0 or die "Failed to run $cmd: $!";
+
+unlink("$build_top/__source__.tar");
+
+system("git -C $build_dir checkout $rev") == 0 or die "Failed to check out revision $rev";
+my $rev_info=`git -C $build_dir show-ref $rev`;
+chomp $rev_info;
+my $msg = "Test version (GIT revision $rev_info)";
+print "rev_info=$rev_info\n";
+
+my $cmd = "( cd $build_dir && smartmkrelease \"$msg\" )";
+system($cmd);
+
+$cmd = "make -C $build_dir rpm";
+print "Running: $cmd\n";
+system($cmd) == 0 or die "Failed to build RPM package for revision $rev";
