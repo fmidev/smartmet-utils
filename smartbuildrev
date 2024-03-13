@@ -24,7 +24,7 @@ if ($#ARGV == 0) {
     $rev = $ARGV[0];
 } elsif ($#ARGV == 1) {
     $top_opt = "-C $ARGV[1]"
-} else {
+} elsif ($#ARGV > 1) {
    die "No more than one argument expected";
 }
 
