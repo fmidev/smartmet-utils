@@ -671,23 +671,29 @@ sub build_and_install_module($)
         print "Execute: $cmd\n";
         if (system($cmd) == 0) {
             $::modules{$module}->{build} = 1;
+
+            my @noarch_rpms = glob("$::noarch_rpm_dir/$module*$ver.*.rpm");
+            my @x86_64_rpms = glob("$::x86_64_rpm_dir/$module*$ver.*.rpm");
+            my @all_rpms = (@noarch_rpms, @x86_64_rpms);
+            if ($#all_rpms >= 0) {
+                $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms)).$output_redirect_append;
+                print "Execute: $cmd\n";
+                if (execute_cmd("$cmd") == 0) {
+                    $::modules{$module}->{install} = 1;
+                    return 1;
+                } else {
+                    push(@::sudo_failed, $module);
+                    return 0;
+                }
+            } else {
+                print "### No RPMs found for $module\n";
+                return 0;
+            }
         } else {
             $::modules{$module}->{build} = -1;
             print "\n";
             print "*** Failed to build $module\n";
             print "\n";
-            return 0;
-        }
-        my @noarch_rpms = glob("$::noarch_rpm_dir/$module*$ver.*.rpm");
-        my @x86_64_rpms = glob("$::x86_64_rpm_dir/$module*$ver.*.rpm");
-
-        $cmd = "sudo $::pkg_man -y localinstall ".join(' ', (@noarch_rpms, @x86_64_rpms)).$output_redirect_append;
-        print "Execute: $cmd\n";
-        if (execute_cmd("$cmd") == 0) {
-	    $::modules{$module}->{install} = 1;
-            return 1;
-        } else {
-            push(@::sudo_failed, $module);
             return 0;
         }
     } else {
