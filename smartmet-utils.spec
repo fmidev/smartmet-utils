@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 24.5.10
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -79,6 +79,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri May 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.5.10-2.fmi
+- smartbuild: Reverted branch support (does not work and causes problems)
+
 * Fri May 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.5.10-1.fmi
 - smartbuild: update
 
