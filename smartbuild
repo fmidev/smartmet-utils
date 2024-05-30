@@ -75,6 +75,9 @@ $::mirror = "$::workspace/mirror";
 $::base_url='git@github.com:fmidev';
 $::export_dir = "$::workspace/export";
 
+#   ':' separated list of branches (primary, first fallback, jne)
+@::branches_list = ( "master" );
+
 ################################################################################################
 
 my @make_options;
@@ -371,6 +374,17 @@ sub update_local_mirror($)
     $::modules{$module} -> {"mirror"} = $mirror_dir;
 }
 
+sub locate_branch($)
+{
+    my $dir = shift;
+    foreach my $branch (@::branches_list) {
+        if (system("git -C $dir show-ref --verify refs/heads/$branch >/dev/null 2>&1") == 0) {
+            return $branch;
+        }
+    }
+    die "No branch found at $dir";
+}
+
 sub extract_spec_version($$$)
 {
     my ($input, $version, $release);
@@ -378,7 +392,7 @@ sub extract_spec_version($$$)
     my $fn = shift;
     my $rev = shift;
     if (not $::settings->{release_rpms} and not $::settings->{release}) {
-        $rev = 'master';
+        $rev = locate_branch($dir);
     }
     open($input, "git -C $dir show $rev:$fn |")
          or die "Failed to run git -C $dir show $rev:$fn: $!";
@@ -404,6 +418,26 @@ sub extract_spec_version($$$)
     }
 }
 
+sub get_spec_file($)
+{
+    my $dir = shift;
+    my $branch = locate_branch($dir);
+    my $input;
+    my $cmd = "git -C $dir show $branch:|";
+    open($input, $cmd) or die "Failed to run $cmd: $!";
+    my @spec_files;
+    while (<$input>) {
+        chomp;
+        if (m/\.spec$/) {
+            push (@spec_files, $_);
+        }
+    }
+    close $input;
+
+    scalar @spec_files == 1 or die "Exactly one SPEC file expected - got (".join(" ", @spec_files).")";
+    return $spec_files[0];
+}
+
 sub get_revision_and_version
 {
     my $input;
@@ -411,39 +445,27 @@ sub get_revision_and_version
     my $dir = shift;
     my $count = shift;
     if ($count == 0) {
-	$count = 10;
+	    $count = 10;
     }
 
-    my @spec_files;
-    open ($input, "git -C $dir show HEAD:|")
-        or die "Failed: git -C $dir show HEAD:";
-    while (<$input>) {
-        chomp;
-        if (m/\.spec$/) {
-            push (@spec_files, $_);
-        }
-    }
-    close ($input);
-
-    scalar @spec_files == 1 or die "Exactly one SPEC file expected - got (".join(" ", @spec_files).")";
-
-    my $fn = basename($spec_files[0]);
-    open($input, "git -C $dir log -$count -- $fn |")
+    my $branch = locate_branch($dir);
+    my $fn = get_spec_file($dir);
+    open($input, "git -C $dir log -$count $branch -- $fn |")
 	or die "Failed to get git history of $fn: $!";
 
-    my $version = extract_spec_version($dir, $fn, 'HEAD');
+    my $version = extract_spec_version($dir, $fn, $branch);
 
     if (not $::settings{release_rpms} and not $::settings{release}) {
-        return ('HEAD', $version, $spec_files[0]);
+        return ($branch, $version, $fn);
     } else {
         if (defined($version)) {
             # Check wheter GIT tag with name equal to version is present and use it if found
             if (system("git -C $dir describe --tags tags/$version") == 0) {
                 print "Git tag $version found. Using it as revision\n";
-                return ("tags/$version", $version, $spec_files[0]);
+                return ("tags/$version", $version, $fn);
             }
 
-            open($input, "git -C $dir log -$count $fn |")
+            open($input, "git -C $dir log -$count $branch $fn |")
                 or die "Failed to get git history of $fn: $!";
             my $rev;
             while (<$input>) {
@@ -453,7 +475,7 @@ sub get_revision_and_version
                     my $curr_rev = $_;
                     my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
                     if (defined($curr_ver) and ($curr_ver ne $version)) {
-                        return ($curr_rev, $version, $spec_files[0]);
+                        return ($curr_rev, $version, $fn);
                     }
                 }
             }
@@ -651,7 +673,7 @@ sub build_and_install_module($)
 
     print_summary $module;
 
-    $cmd = "git -C $mirror_dir archive --format=tar $rev: | tar -C $tmp -x $output_redirect_append";
+    $cmd = "git -C $mirror_dir clone . $tmp $output_redirect_append";
     print "Execute: $cmd\n";
     system($cmd) == 0
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
@@ -783,14 +805,16 @@ sub build_and_install_module_rpms_recursive
         return $ret_code;
     }
 
-    $ret_code = check_available($module);
+    if ($::settings->{release_rpms}) {
+        $ret_code = check_available($module);
+    }
 
     if ($ret_code) {
         if (!defined($::installed{$module})
             or $::settings->{ignore_installed}
             or ($::installed{$module} ne $::modules{$module}->{"version"})) {
 
-            if (defined($::installed{$module})) {
+            if (!defined($::settings->{devrpm} and defined($::installed{$module}))) {
                if (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"})) {
                   print "ERROR: Installed version of $module ($::installed{$module}) is newer than";
                   print " available from git ($::modules{$module}->{version}): missing 'git push' suspected\n";
@@ -899,6 +923,8 @@ sub help
     print "  --release            - build, test and install SmartMet latest release versions\n";
     print "  --current            - build, test and ubstall current head version of GIT\n";
     print "                         master branch of packages\n";
+    print "  --branch             - GIT branch(es) to use (for example devel:master, use devel, fall back to\n";
+    print "                         master if devel is not found\n";
     print "  --recursive          - build also dependencies recursively\n";
     print "  --update             - only update local GIT mirrors (no build)\n";
     print "  --local              - do not update local GIT mirrors\n";
@@ -929,6 +955,7 @@ sub handle_params
         'config=s'             => \$param{config_file},
         'default-config'       => \$param{default_config},
         'create-workspace'     => sub { make_path("workspace/mirror"); },
+        'branch=s'             => \$param{branches},
         'release-rpms'         => \$param{release_rpms},
         'release'              => \$param{release},
         'current'              => \$param{current},
@@ -1007,6 +1034,11 @@ sub handle_params
                 $config->{modules}->{$name}->{'repo'} = $repo;
             }
         }
+    }
+
+    #   expanded list of branches
+    if (defined($param{branches})) {
+        @::branches_list = split(/:/, $param{branches});
     }
 
     if (defined($param{remove_module})) {
@@ -1132,9 +1164,13 @@ if ($::settings->{dump_available}) {
     exit(0);
 }
 
+if ($::settings->{release_rpms} and $::settings->{devrpm}) {
+    die "Parameters --release-rpms and --devrpm cannot be specified together";
+}
+
 my $modules_ref = $::config->{modules};
 for my $module (keys %$modules_ref) {
-    if ($::settings->{release_rpms}) {
+    if ($::settings->{release_rpms} or $::settings->{devrpm}) {
         build_and_install_module_rpms_recursive($module);
     } else {
         build_and_install_module_recursive($module);
