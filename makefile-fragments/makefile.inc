@@ -110,6 +110,11 @@ ifeq ($(ANALYZER), yes)
   endif
 endif
 
+# LTO support
+ifeq ($(USE_LTO), yes)
+  FLAGS += -flto
+  LDFLAGS += -flto
+endif
 
 FLAGS += $(EXTRA_FLAGS)
 
