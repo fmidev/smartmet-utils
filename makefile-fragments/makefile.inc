@@ -164,6 +164,13 @@ ifneq ($(filter proj,$(REQUIRES)),)
   endif
 endif
 
+ifneq ($(filter fileystem,$(REQUIRES)),)
+  REQUIRES_LEFT := $(filter-out filesystem,$(REQUIRES))
+  ifneq ($($(CXX) -print-file-name=libstdc++fs.a),libstdc++fs.a)
+    REQUIRED_LIBS += -lstdc++fs
+  endif
+endif
+
 ifneq ($(filter cairo,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out cairo, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags cairo 2>/dev/null)
