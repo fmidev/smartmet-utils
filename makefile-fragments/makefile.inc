@@ -164,7 +164,7 @@ ifneq ($(filter proj,$(REQUIRES)),)
   endif
 endif
 
-ifneq ($(filter fileystem,$(REQUIRES)),)
+ifneq ($(filter filesystem,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out filesystem,$(REQUIRES))
   ifneq ($($(CXX) -print-file-name=libstdc++fs.a),libstdc++fs.a)
     REQUIRED_LIBS += -lstdc++fs
