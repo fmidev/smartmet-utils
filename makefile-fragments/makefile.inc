@@ -158,10 +158,7 @@ ifneq ($(filter spatialite,$(REQUIRES)),)
   endif
 endif
 
-ifneq ($(filter spatialite,$(REQUIRES)),)
-  ifeq ($(filter sqlite3,$(REQUIRES)),)
-    REQUIRES := $(REQUIRES) sqlite3
-  endif
+ifneq ($(filter proj,$(REQUIRES)),)
   ifeq ($(filter libcurl,$(REQUIRES)),)
     REQUIRES := $(REQUIRES) libcurl
   endif
