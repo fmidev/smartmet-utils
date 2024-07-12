@@ -47,6 +47,12 @@ PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 90 82 81, /usr/proj$(ver)/l
 __GDAL_INCLUDES_SEARCH := $(foreach ver, 35 34, $(wildcard /usr/gdal$(ver)/include/gdal.h))
 __GEOS_INCLUDES_SEARCH := $(foreach ver, 311 310, $(wildcard /usr/geos$(ver)/include/geos/version.h))
 
+# /usr/lib64 ja samanlaiset ei saa antaa -L parametrin arvoina. Ne tulevat kuitenkin usein pkg-config vastauksissa
+__REMOVE_LINK_DIRS := -L/lib -L/lib64 -L/usr/lib -L/usr/lib64 -L/usr/local/lib -L/usr/local/lib64
+
+# Empty if $(libdir) is system library directory or -L$(libdir) otherwise
+libdir_opt := $(filter-out $(__REMOVE_LINK_DIRS), -L$(libdir))
+
 # Compiler flags
 
 __SMARTCXXCHECK__ ?= smartcxxcheck
@@ -184,8 +190,8 @@ endif
 ifneq ($(filter configpp,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out configpp, $(REQUIRES_LEFT))
   ifeq ($(wildcard /usr/libconfig17/lib/libconfig.so),)
-    INCLUDES += $(shell pkg-config --cflags libconfig++ 2>/dev/null)
-    CONFIGPP_LIBS = $(shell pkg-config --libs libconfig++ 2>/dev/null)
+    INCLUDES += $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --cflags libconfig++ 2>/dev/null))
+    CONFIGPP_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs libconfig++ 2>/dev/null))
   else
     INCLUDES += -I /usr/libconfig17/include
     CONFIGPP_LIBS = -L /usr/libconfig17/lib -lconfig++ -lconfig
@@ -211,7 +217,7 @@ endif
 ifneq ($(filter fmt,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out fmt, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags fmt 2>/dev/null)
-  FMT_LIBS := $(shell pkg-config --libs fmt 2>/dev/null)
+  FMT_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs fmt 2>/dev/null))
   ifeq ($(FMT_LIBS),)
     REQUIRES_MISSING += fmt
   endif
@@ -266,7 +272,7 @@ endif
 ifneq ($(filter icu-i18n,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out icu-i18n, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags icu-i18n 2>/dev/null)
-  ICU_I18N_LIBS = $(shell pkg-config --libs icu-i18n 2>/dev/null)
+  ICU_I18N_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs icu-i18n 2>/dev/null))
   ifeq ($(ICU_I18N_LIBS),)
      REQUIRES_MISSING += icu-i18n
   endif
@@ -276,7 +282,7 @@ endif
 ifneq ($(filter jsoncpp,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out jsoncpp, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags jsoncpp 2>/dev/null)
-  JSONCPP_LIBS = $(shell pkg-config --libs jsoncpp 2>/dev/null)
+  JSONCPP_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs jsoncpp 2>/dev/null))
   ifeq ($(JSONCPP_LIBS),)
     REQUIRES_MISSING += jsoncpp
   endif
@@ -286,7 +292,7 @@ endif
 ifneq ($(filter libpqxx,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out libpqxx, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags libpqxx 2>/dev/null)
-  LIBPQXX_LIBS = $(shell pkg-config --libs libpqxx 2>/dev/null)
+  LIBPQXX_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs libpqxx 2>/dev/null))
   ifeq ($(LIBPQXX_LIBS),)
     REQUIRES_MISSING += libpqxx
   endif
@@ -296,7 +302,7 @@ endif
 ifneq ($(filter librsvg,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out librsvg, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags librsvg-2.0 2>/dev/null)
-  LIBRSVG_LIBS = $(shell pkg-config --libs librsvg-2.0)
+  LIBRSVG_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs librsvg-2.0))
   ifeq ($(LIBRSVG_LIBS),)
     REQUIRES_MISSING += librsvg-2.0
   endif
@@ -314,7 +320,7 @@ endif
 ifneq ($(filter mariadb,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out mariadb, $(REQUIRES_LEFT))
   MARIADB_LIBS = $(shell mysql_config --libs_r 2>/dev/null)
-  INCLUDES += $(shell mysql_config --cflags 2>/dev/null)
+  INCLUDES += $(filter-out $(__REMOVE_LINK_DIRS), $(shell mysql_config --cflags 2>/dev/null))
   ifeq ($(MARIADB_LIBS),)
     REQUIRES_MISSING += mariadb
   endif
@@ -325,7 +331,7 @@ endif
 ifneq ($(filter spatialite,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out spatialite, $(REQUIRES_LEFT))
   # Search in /usr/spatiallite(?:50|43) at first
-  SPATIALITE_LIBS := $(shell PKG_CONFIG_PATH="$(SPATIALITE_PKG_SEARCH)" pkg-config --libs spatialite)
+  SPATIALITE_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(shell PKG_CONFIG_PATH="$(SPATIALITE_PKG_SEARCH)" pkg-config --libs spatialite))
   INCLUDES += $(shell PKG_CONFIG_PATH="$(SPATIALITE_PKG_SEARCH)" pkg-config --cflags spatialite)
   ifeq ($(SPATIALITE_LIBS),)
     REQUIRES_MISSING += spatialite
@@ -341,7 +347,7 @@ endif
 ifneq ($(filter sqlite3,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out sqlite3, $(REQUIRES_LEFT))
   # Search in /usr/sqlite330 at first
-  SQLITE3_LIBS := $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --libs sqlite3)
+  SQLITE3_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --libs sqlite3))
   INCLUDES += $(shell PKG_CONFIG_PATH="$(SQLITE3_PKG_SEARCH)" pkg-config --cflags sqlite3)
   ifeq ($(SQLITE3_LIBS),)
     REQUIRES_MISSING += sqlite3
@@ -352,7 +358,7 @@ endif
 ifneq ($(filter xerces-c,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out xerces-c, $(REQUIRES_LEFT))
   INCLUDES += $(shell pkg-config --cflags xerces-c --cflags 2>/dev/null)
-  XERCES_C_LIBS = $(shell pkg-config --libs xerces-c --libs 2>/dev/null)
+  XERCES_C_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs xerces-c --libs 2>/dev/null))
   ifeq ($(XERCES_C_LIBS),)
     REQUIRES_MISSING += xerces-c
   endif
@@ -362,8 +368,8 @@ endif
 ifneq ($(filter proj,$(REQUIRES)),)
   REQUIRES_LEFT := $(filter-out proj, $(REQUIRES_LEFT))
   INCLUDES += $(shell PKG_CONFIG_PATH="$(PROJ_PKG_SEARCH)" pkg-config --cflags proj 2>/dev/null)
-  PROJ_LIBS := $(shell PKG_CONFIG_PATH="$(PROJ_PKG_SEARCH)" pkg-config --libs proj 2>/dev/null)
-  ifeq ($(PROJ_LIBS),)
+  PROJ_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(shell PKG_CONFIG_PATH="$(PROJ_PKG_SEARCH)" pkg-config --libs proj 2>/dev/null))
+ifeq ($(PROJ_LIBS),)
     ifneq ($(wildcard /usr/proj72/lib/libproj*),)
       INCLUDES += -I/usr/proj72/include
       PROJ_LIBS += -L/usr/proj72/lib
@@ -408,7 +414,7 @@ ifneq ($(filter libcurl,$(REQUIRES)),)
      REQUIRES_MISSING := $(REQUIRES_MISSING) libcurl>=7.61.0
   else
      INCLUDES += $(shell pkg-config --cflags libcurl)
-     LIBCURL_LIBS += $(shell pkg-config --libs libcurl)
+     LIBCURL_LIBS += $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs libcurl))
   endif
   REQUIRED_LIBS += $(LIBCURL_LIBS)
 endif
@@ -444,6 +450,9 @@ endif
 # end of 'ifneq ($(CXX_VERSION_STRING),)' block
 
 CLEAN_TARGETS :=
+
+REQUIRED_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(REQUIRED_LIBS))
+PREFIX_LDFLAGS := $(filter-out $(__REMOVE_LINK_DIRS), -L$(libdir))
 
 #############################
 #     rpmbuild options      #
