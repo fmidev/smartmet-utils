@@ -815,7 +815,8 @@ sub build_and_install_module_rpms_recursive
             or ($::installed{$module} ne $::modules{$module}->{"version"})) {
 
             if (!defined($::settings->{devrpm} and defined($::installed{$module}))) {
-               if (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"})) {
+               if (defined($::installed{$module})
+                     and (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"}))) {
                   print "ERROR: Installed version of $module ($::installed{$module}) is newer than";
                   print " available from git ($::modules{$module}->{version}): missing 'git push' suspected\n";
                   push(@::failed_modules, $module);
