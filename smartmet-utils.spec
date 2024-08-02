@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.5.31
+Version: 24.7.19
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -74,6 +74,12 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Jul 19 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.7.19-1.fmi
+- smartbuild and makefile.inc updates
+
+* Mon Jul  1 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.7.1-1.fmi
+- Add require string 'filesystem' for libstdc++fs
+
 * Fri May 31 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.5.30-1.fmi
 - smartbuild: GIT branch support with optional fallback if not found
 - makefile.inc: Link time optimization support (USE_LTO=yes ==> -flto)

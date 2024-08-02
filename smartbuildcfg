@@ -10,11 +10,12 @@ my $show_prefix = '';
 my $show_cflags = '';
 my $show_libs = '';
 
-
-$::script_path = abs_path($0);
-
 my @CFLAGS;
 my @LDFLAGS;
+
+sub GetPrefix();
+sub GetCompilerVersionInfo($);
+sub ProcessRequires();
 
 GetOptions(
     "prefix" => \$show_prefix,
@@ -57,7 +58,7 @@ sub GetPrefix()
     return $result;
 }
 
-sub GetCompilerVersionInfo()
+sub GetCompilerVersionInfo($)
 {
     my $CXX = shift;
     if (not defined($CXX)) {
@@ -108,7 +109,7 @@ sub GetCompilerVersionInfo()
 
     push @CFLAGS, "-std=$result->{STD}";
 
-    # FIXME: add warning related options 
+    # FIXME: add warning related options
 
     return \$result;
 }
@@ -117,16 +118,16 @@ sub ProcessRequires()
 {
     my %requires;
     my (@unrecognized, @pkg_config_list);
- 
+
     # Collect all requires
     foreach my $arg (@ARGV) {
-	$requires{$arg} = 0;
-    }
+		$requires{$arg} = 0;
+	}
 
-    if ( -d "/usr/include/boost169" ) {
-	push @CFLAGS, ("-isystem /usr/include/boost169");
-	push @LDFLAGS, ("-L/usr/lib64/boost169");
-    }
+	if ( -d "/usr/include/boost169" ) {
+		push @CFLAGS, ("-isystem /usr/include/boost169");
+		push @LDFLAGS, ("-L/usr/lib64/boost169");
+	}
 
     foreach ("cairo", "fmt", "icu-i18n", "jsoncpp", "librsvg", "mariadb", "xerces-c") {
 	if (defined($requires{$_})) {
@@ -155,12 +156,12 @@ sub ProcessRequires()
 
 
     if (defined($requires{gdal})) {
-	if (-d "/usr/gdal32/include") {
-	    push @CFLAGS, ("-isystem /usr/gdal32/include");
-	    push @LDFLAGS, ("-L/usr/gdal32/lib", "-lgdal");
-	} elsif (-d "/usr/gdal30/include") {
-	    push @CFLAGS, ("-isystem /usr/gdal30/include");
-	    push @LDFLAGS, ("-L/usr/gdal30/lib", "-lgdal");
+	if (-d "/usr/gdal38/include") {
+	    push @CFLAGS, ("-isystem /usr/gdal38/include");
+	    push @LDFLAGS, ("-L/usr/gdal38/lib", "-lgdal");
+	} elsif (-d "/usr/gdal35/include") {
+	    push @CFLAGS, ("-isystem /usr/gdal35/include");
+	    push @LDFLAGS, ("-L/usr/gdal35/lib", "-lgdal");
 	} else {
 	    push @CFLAGS, ("-isystem /usr/include/gdal");
 	    push @LDFLAGS, ("-lgdal");
@@ -168,19 +169,25 @@ sub ProcessRequires()
 	$requires{"gdal"} = 1;
     }
 
-    if (defined($requires{geos})) {
-	my ($cf2, $lf2);
-	if (-f "/usr/geos39/bin/geos-config") {
-	    $cf2 = `/usr/geos39/bin/geos-config --cflags`;
-	    $lf2 = `/usr/geos39/bin/geos-config --libs`;
-	} elsif (-f "/usr/bin/geos-config") {
-	    $cf2 = `/usr/bin/geos-config --cflags`;
-	    $lf2 = `/usr/bin/geos-config --libs`;
-	}
-	$cf2 =~ s|-I\s*/|-isystem |g;
-	push @CFLAGS, split m/\s+/, $cf2;
-	push @LDFLAGS, split m/\s+/, $lf2;
-	$requires{"geos"} = 1;
+	if (defined($requires{geos})) {
+		my ($cf2, $lf2);
+		if (-f "/usr/geos312/bin/geos-config") {
+	    	$cf2 = `/usr/geos312/bin/geos-config --cflags`;
+	    	$lf2 = `/usr/geos312/bin/geos-config --libs`;
+		} elsif (-f "/usr/geos311/bin/geos-config") {
+			$cf2 = `/usr/geos311/bin/geos-config --cflags`;
+			$lf2 = `/usr/geos311/bin/geos-config --libs`;
+		} elsif (-f "/usr/bin/geos-config") {
+	    	$cf2 = `/usr/bin/geos-config --cflags`;
+	    	$lf2 = `/usr/bin/geos-config --libs`;
+		} else {
+	    	$cf2 = '';
+	    	$lf2 = '-lgeos';
+		}
+		$cf2 =~ s|-I\s*/|-isystem |g;
+		push @CFLAGS, split m/\s+/, $cf2;
+		push @LDFLAGS, split m/\s+/, $lf2;
+		$requires{"geos"} = 1;
     }
 
     if (@pkg_config_list > 0) {
