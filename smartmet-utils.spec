@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 24.8.7
-Release: 2%{?dist}.fmi
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -74,6 +74,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Aug  7 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.8.7-3.fmi
+- Update to gdal-3.8, geos-3.12, proj-94 and fmt-11
+
 * Wed Aug  7 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.8.7-2.fmi
 - makefile.inc: update detection of libspatialite
 
