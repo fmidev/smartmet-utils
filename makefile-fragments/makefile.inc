@@ -197,7 +197,7 @@ ifneq ($(filter configpp,$(REQUIRES)),)
     CONFIGPP_LIBS = $(filter-out $(__REMOVE_LINK_DIRS), $(shell pkg-config --libs libconfig++ 2>/dev/null))
   else
     INCLUDES += -I /usr/libconfig17/include
-    CONFIGPP_LIBS = -L /usr/libconfig17/lib -lconfig++ -lconfig
+    CONFIGPP_LIBS = -L/usr/libconfig17/lib -lconfig++ -lconfig
   endif
   ifeq ($(CONFIGPP_LIBS),)
     REQUIRES_MISSING += libconfig++
