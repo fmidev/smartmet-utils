@@ -159,6 +159,9 @@ ifneq ($(filter spatialite,$(REQUIRES)),)
   ifeq ($(filter sqlite3,$(REQUIRES)),)
     REQUIRES := $(REQUIRES) sqlite3
   endif
+  ifeq ($(filter geos,$(REQUIRES)),)
+    REQUIRES += geos
+  endif
   ifeq ($(filter proj,$(REQUIRES)),)
     REQUIRES := $(REQUIRES) proj
   endif
@@ -257,7 +260,10 @@ ifneq ($(filter geos,$(REQUIRES)),)
     # Avoid unresolved references with geos-3.10 (src/inline.cpp dropped from sources)
     FLAGS += -DGEOS_INLINE
     INCLUDES += $(shell $(GEOS_DIR)/bin/geos-config --cflags 2>/dev/null)
-    GEOS_LIBS = -L$(GEOS_DIR)/lib64 -lgeos
+    # Workaround possible conflict between 2 different versions of libgeos_c by
+    # providing correct directory in RPATH. That may happens if spatialite is also selected
+    # and more than one GEOS version is installed
+    GEOS_LIBS = -Wl,--rpath,$(GEOS_DIR)/lib64 -L$(GEOS_DIR)/lib64 -lgeos
   else
     ifneq "$(wildcard /usr/bin/geos-config)" ""
       # geos-config is intentionally not used here
