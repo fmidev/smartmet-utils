@@ -60,7 +60,8 @@ use Data::Dumper;
     "smartmet-SFCGAL-libs"                  => 1,
     "smartmet-library-spine-plugin-test"    => 1,
     "smartmet-trajectory-formats"           => 1,
-    "smartmet-trajectory"                   => 1
+    "smartmet-trajectory"                   => 1,
+    "smartmet-library-newbase-python"       => 1
     );
 
 # Specify mapping to GitHub repository names if not the same as module name
