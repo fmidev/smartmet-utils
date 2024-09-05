@@ -220,16 +220,11 @@ sub get_system_info
         $::x86_64_dir = "rhel/7/beta";
         $::builddep = "yum-builddep";
         $::get_available = "repoquery $repo_config --queryformat='%{name} %{evr} %{repoid}'";
-    } elsif ($::rhel_ver == 8) {
+        @::branches_list = ( "rhel7" );
+    } elsif ($::rhel_ver == 8 or $::rhel_ver == 9) {
         $::pkg_man = "dnf";
-        $::debug_dir = "rhel/8/beta";
-        $::x86_64_dir = "rhel/8/beta";
-        $::builddep = "dnf builddep";
-        $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
-    } elsif ($::rhel_ver == 9) {
-        $::pkg_man = "dnf";
-        $::debug_dir = "rhel/9/debug";
-        $::x86_64_dir = "rhel/9/x86_64";
+        $::debug_dir = "rhel/${$::rhel_ver}/beta";
+        $::x86_64_dir = "rhel/${$::rhel_ver}/beta";
         $::builddep = "dnf builddep";
         $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif (not $::settings->{release_rpms}) {
