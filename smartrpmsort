@@ -21,18 +21,23 @@ my $ok = 1;
 
 for my $path (glob "$dir/*.rpm") {
     my $fn = basename $path;
-    $fn =~ m:^(.+?)-([0-9\.]+)-([0-9]+)\.(el\d+_\d+|el\d+|)[^-]*:;
-    my $name = $1;
-    my $version = $2;
-    my $release = $3;
-    my $rhel = $4;
-    if ($version =~ m/^(\d+)\.(\d+)\.(\d+)$/) {
-        my $sort_key = sprintf("%05d%05d%05d%05d-%s", $1, $2, $3, $release, $rhel);
-        #print "'$fn' name='$name' ('$1','$2','$3','$release','$rhel') -> sort_key='$sort_key'\n";
-        $packages{$name}{$sort_key} = $fn;
-    } else {
-        print "Failed to parse version string '$version' for '$fn'\n";
+    if (not $fn =~ m@^(.+?)-(\d+(?:\.\d+)*)-(\d+)(?:.\w+)*?\.(?:x86_64|noarch)\.rpm@) {
+        print "Failed to parse filename '$fn'\n";
+        next;
     }
+    my $name = $1;
+    my $version = $2 . ".0.0.0.0.0";
+    my $release = $3;
+    my @version_parts = split(/\./, $version);
+    @version_parts = splice @version_parts, 0, 5;
+    foreach my $part (@version_parts) { $part = sprintf("%05u", $part); }
+    my $sort_key = join("", @version_parts);
+    #print "'$fn' name='$name' ('$1','$2','$3','$release','$rhel') -> sort_key='$sort_key'\n";
+    if (defined $packages{$name}{$sort_key}) {
+        print "Duplicate sort key $sort_key for package $path ($packages{$name}{$sort_key} have the same sort key\n";
+        next;
+    }
+    $packages{$name}{$sort_key} = $fn;
 }
 
 #print Dumper(\%packages);
