@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.8.21
+Version: 24.9.6
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -74,6 +74,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Sep  6 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.9.6-1.fmi
+- Update smartbuild (use smartmet-open-beta also for RHEL9) and smartrpmsort
+
 * Wed Aug 21 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.8.21-1.fmi
 - smartbuild: add smartmet-library-newbase-python to default ignore list
 
