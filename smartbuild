@@ -223,8 +223,8 @@ sub get_system_info
         @::branches_list = ( "rhel7" );
     } elsif ($::rhel_ver == 8 or $::rhel_ver == 9) {
         $::pkg_man = "dnf";
-        $::debug_dir = "rhel/${$::rhel_ver}/beta";
-        $::x86_64_dir = "rhel/${$::rhel_ver}/beta";
+        $::debug_dir = "rhel/$::rhel_ver/beta";
+        $::x86_64_dir = "rhel/$::rhel_ver/beta";
         $::builddep = "dnf builddep";
         $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
     } elsif (not $::settings->{release_rpms}) {
