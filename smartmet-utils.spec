@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.9.6
+Version: 24.9.10
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -74,6 +74,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Sep 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.9.10-1.fmi
+- Fix smartbuild (broken in previous version)
+
 * Fri Sep  6 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.9.6-1.fmi
 - Update smartbuild (use smartmet-open-beta also for RHEL9) and smartrpmsort
 
