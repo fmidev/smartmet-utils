@@ -49,6 +49,7 @@ use Data::Dumper;
     "smartmet-tools-grid"                   => {},
     "smartmet-textgenapps"                  => {},
     "smartmet-cropper"                      => {},
+    "smartmet-press"                        => {}
     );
 
 %::default_ignore = (
