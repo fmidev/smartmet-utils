@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.9.10
+Version: 24.12.10
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -74,6 +74,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Dec 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.12.10-1.fmi
+- smartbuild default config: add smartmet-press and remove smartmet-plugin-admin
+
 * Tue Sep 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.9.10-1.fmi
 - Fix smartbuild (broken in previous version)
 
