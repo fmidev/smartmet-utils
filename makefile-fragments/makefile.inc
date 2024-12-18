@@ -43,9 +43,9 @@ plugindir ?= $(datadir)/smartmet/plugins
 
 SQLITE3_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 330, /usr/sqlite$(ver)/lib/pkgconfig))
 SPATIALITE_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 50, /usr/libspatialite$(ver)/lib/pkgconfig))
-PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 94 90, /usr/proj$(ver)/lib/pkgconfig /usr/proj$(ver)/lib64/pkgconfig))
-__GDAL_INCLUDES_SEARCH := $(foreach ver, 38 35, $(wildcard /usr/gdal$(ver)/include/gdal.h))
-__GEOS_INCLUDES_SEARCH := $(foreach ver, 312 311, $(wildcard /usr/geos$(ver)/include/geos/version.h))
+PROJ_PKG_SEARCH := $(subst $(eval) ,:,$(foreach ver, 95 94 90, /usr/proj$(ver)/lib/pkgconfig /usr/proj$(ver)/lib64/pkgconfig))
+__GDAL_INCLUDES_SEARCH := $(foreach ver, 310 38 35, $(wildcard /usr/gdal$(ver)/include/gdal.h))
+__GEOS_INCLUDES_SEARCH := $(foreach ver, 313 312 311, $(wildcard /usr/geos$(ver)/include/geos/version.h))
 
 # /usr/lib64 ja samanlaiset ei saa antaa -L parametrin arvoina. Ne tulevat kuitenkin usein pkg-config vastauksissa
 __REMOVE_LINK_DIRS := -L/lib -L/lib64 -L/usr/lib -L/usr/lib64 -L/usr/local/lib -L/usr/local/lib64
