@@ -44,12 +44,12 @@ Requires: perl-Getopt-Long
 Requires: perl-JSON-PP
 #TestRequires: bc
 #TestRequires: gcc-c++
-#TestRequires: geos312-devel
-#TestRequires: gdal38-devel
+#TestRequires: geos313-devel
+#TestRequires: gdal310-devel
 #TestRequires: libcurl-devel
 
 %if 0%{?rhel} && 0%{rhel} >= 8
-#TestRequires: proj94-devel
+#TestRequires: proj95-devel
 #TestRequires: sqlite-devel
 %endif
 
