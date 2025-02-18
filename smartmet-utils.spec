@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 24.12.10
+Version: 25.2.18
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -74,6 +74,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Feb 18 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.2.18-1.fmi
+- Update to gdal-3.10, geos-3.13 and proj-9.5
+
 * Tue Dec 10 2024 Andris Pavēnis <andris.pavenis@fmi.fi> 24.12.10-1.fmi
 - smartbuild default config: add smartmet-press and remove smartmet-plugin-admin
 
