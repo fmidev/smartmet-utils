@@ -47,6 +47,7 @@ Requires: perl-JSON-PP
 #TestRequires: geos313-devel
 #TestRequires: gdal310-devel
 #TestRequires: libcurl-devel
+#TestRequires: libtiff-devel >= 4.1
 
 %if 0%{?rhel} && 0%{rhel} >= 8
 #TestRequires: proj95-devel
