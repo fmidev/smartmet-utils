@@ -9,7 +9,10 @@ Group: Development/Tools
 URL: http://www.weatherproof.fi
 Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot-%(%{__id_u} -n)
-BuildRequires: make bash
+BuildRequires: make
+BuildRequires: bash
+BuildRequires: gcc-c++
+BuildRequires: ImageMagick-c++-devel
 Requires: make bash perl git
 
 %description
@@ -21,6 +24,7 @@ rm -rf $RPM_BUILD_ROOT
 %setup -q -n %{BINNAME}
 
 %build
+make %{?_smp_mflags}
 
 %install
 %makeinstall
@@ -71,6 +75,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartmktag
 %{_bindir}/smartpngdiff
 %{_bindir}/smartrpmsort
+%{_bindir}/smartimgdiff_psnr
 %{_datadir}/smartmet/devel/makefile.inc
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 

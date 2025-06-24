@@ -2,7 +2,7 @@
 #
 # pngdiff.sh <ok_png> <png> <diff_png>
 #
-# Compare produced PNG to a reference file, using ImageMagick.
+# compare produced PNG to a reference file, using ImageMagick.
 #
 # Ref: ImageMagick Comparing:
 #       <http://www.imagemagick.org/Usage/compare/>
@@ -15,19 +15,12 @@ OK_PNG=$1
 PNG=$2
 DIFF_PNG=$3
 
-if test "$IGNORE_WGS84" != "Y" ; then
-    # Detect WGS84 branch
-    grep --quiet "#define WGS84 1" /usr/include/smartmet/newbase/NFmiGlobals.h
-    wgs84=$(expr $? == 0)
-fi
-
-# And use WGS84 result if it exists in WGS84 branch
-
-if [[ $wgs84 == 1 ]]; then
-    wgs84png=${OK_PNG}.wgs84
-    if [ -e $wgs84png ]; then
-	OK_PNG=$wgs84png
-    fi
+if [ -f /usr/bin/magick ]; then
+    COMPARE="/usr/bin/magick compare"
+    CONVERT="/usr/bin/magick"
+else
+    COMPARE=/usr/bin/convert
+    CONVERT=/usr/bin/convert
 fi
 
 if [[ $CI == "" ]]; then
@@ -47,7 +40,7 @@ fi
 # Create a visual difference file
 #
 composite $OK_PNG $PNG -compose DIFFERENCE png:- | \
-    convert - -contrast-stretch 0 $DIFF_PNG
+    $CONVERT - -contrast-stretch 0 $DIFF_PNG
 
 # Get measurement of the difference
 #
@@ -62,17 +55,18 @@ composite $OK_PNG $PNG -compose DIFFERENCE png:- | \
 
 # Note: '-metric AE' and '-fuzz n%' would be a good combo, but requires IM >= 6.4.3
 #
-#V="$(compare 2>&1 -metric AE -fuzz 5% ${OK_PNG} ${PNG} ${DIFF_PNG})"
+#V="$($COMPARE 2>&1 -metric AE -fuzz 5% ${OK_PNG} ${PNG} ${DIFF_PNG})"
 
 # Note: IM 6.4.x outputs just the PSNR number (i.e. 22.432) but 6.2.8 outputs
 #	"22.432 dB\n300,300,PNG" which is... troublesome
 #
-#V="$(compare 2>&1 -metric PSNR ${OK_PNG} ${PNG} ${DIFF_PNG} | head -1 | sed "-es/ dB//")"
+#V="$($COMPARE 2>&1 -metric PSNR ${OK_PNG} ${PNG} ${DIFF_PNG} | head -1 | sed "-es/ dB//")"
 
 # Note: IM 6.2.x seems to have trouble with opacity; gives many
 #       "image opacity differs" errors; 6.4.x gives not.
 #
-V=$((compare 2>&1 -metric PSNR ${OK_PNG} ${PNG} /dev/null | head -1 | sed "-es/ dB//") || exit 255)
+
+#V=$(($COMPARE 2>&1 -metric PSNR ${OK_PNG} ${PNG} /dev/null | head -1 | sed "-es/ dB//") || exit 255)
 
 # Cut non-decimal values (error string) out
 #
@@ -89,48 +83,49 @@ V=$((compare 2>&1 -metric PSNR ${OK_PNG} ${PNG} /dev/null | head -1 | sed "-es/ 
 # HACK: A real hack. Did not get the above code to work.
 #
 
-if [ $(echo "$V" | grep compare | wc -l) = 1 ]; then
-    echo "${COL_RED}FAIL:${COL_OFF} $V"
-    if [ $(echo "$V" | grep "opacity differs" | wc -l) = 1 ]; then
-        echo "${COL_BOLD}ImageMagick >= 6.4.x is needed for this test${COL_OFF}"
-    fi
-    exit 100
+# Look for the 'smartimgdiff_psnr' script in the same directory as this script.
+# If it is not found, try to use 'smartimgdiff_psnr' in the PATH.
+smartimgdiff_psnr=$(dirname $0)/smartimgdiff_psnr
+if [ ! -x "$smartimgdiff_psnr" ]; then
+    smartimgdiff_psnr=smartimgdiff_psnr
 fi
+result=$($smartimgdiff_psnr $OK_PNG $PNG 2>&1 | head -1)
+V=$(echo $result | awk '/^PSNR:/ { print $2 }')
+case "$V" in
+    inf)
+        echo "${COL_GREEN}OK:${COL_OFF}"
+        exit 0
+        ;;
+    [0-9\.][0-9\.]*)
+        if [ $(echo "$V >= 50" | bc) = 1 ]; then
+            echo "${COL_GREEN}OK:${COL_OFF} PSNR >= 50dB ($V dB)"
+            exit 0
+        elif [ $(echo "$V >= 20" | bc) = 1 ]; then
+            echo "${COL_YELLOW}WARNING:${COL_OFF} 20dB <= PSNR < 50dB ($V dB)"
+            exit 0
+        elif [ $(echo "$V >= 0" | bc) = 1 ]; then
+            echo "${COL_RED}FAIL:${COL_OFF} PSNR < 20dB ($V dB)"
+            exit 100
+        fi
+        ;;
+    *)
+        echo "${COL_RED}FAIL:${COL_OFF} $result"
+        exit 100
+        ;;
+esac
 
-nw=$(echo $V | wc -w)
-if test "$nw" = 1 ; then
-    matches="inf";
-else
-    matches="0";
-fi
-V=$(echo $V | sed -e 's/\s..*$//')
+#	$CONVERT -delay 50 results_ok/${PNG} results/${PNG} -loop 0 results_diff/$(PNG:.png=.anim.gif)
 
-if [ "$V" = "$matches" ] ; then
-    echo "${COL_GREEN}OK:${COL_OFF}"
-elif [ $(echo "$V >= 50" | bc) = 1 ]; then
-    echo "${COL_GREEN}OK:${COL_OFF} PSNR >= 50dB ($V dB)"
-    exit 0
-elif [ $(echo "$V >= 20" | bc) = 1 ]; then
-    echo "${COL_YELLOW}WARNING:${COL_OFF} 20dB <= PSNR < 50dB ($V dB)"
-    exit 0
-elif [ $(echo "$V >= 0" | bc) = 1 ]; then
-    echo "${COL_RED}FAIL:${COL_OFF} PSNR < 20dB ($V dB)"
-    exit 100
-fi
-
-
-#	convert -delay 50 results_ok/${PNG} results/${PNG} -loop 0 results_diff/$(PNG:.png=.anim.gif)
-
-#	compare -metric AE -fuzz 50% results_ok/$(PNG) results/$(PNG) results_diff/$(PNG)
+#	$COMPARE -metric AE -fuzz 50% results_ok/$(PNG) results/$(PNG) results_diff/$(PNG)
 
 # This requires IM >= 6.4.2-8 (creates gray scale mask of the differences)
 #
-#	compare -metric AE -fuzz 5% results_ok/$(PNG) results/$(PNG) \
+#	$COMPARE -metric AE -fuzz 5% results_ok/$(PNG) results/$(PNG) \
 #	   -compose Src -highlight-color White -lowlight-color Black results_diff/$(PNG)
 
 #	composite -compose DIFFERENCE results_ok/$(PNG) results/$(PNG) results_diff/$(PNG)
 #	convert -threshold 25% -colorize 0/100/0 results_diff/$(PNG) results_diff/2_$(PNG)
 
-#	compare -metric PSNR results_ok/$(PNG) results/$(PNG) results_diff/$(PNG)
+#	$COMPARE -metric PSNR results_ok/$(PNG) results/$(PNG) results_diff/$(PNG)
 
 
