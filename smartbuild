@@ -221,7 +221,7 @@ sub get_system_info
         $::builddep = "yum-builddep";
         $::get_available = "repoquery $repo_config --queryformat='%{name} %{evr} %{repoid}'";
         @::branches_list = ( "rhel7" );
-    } elsif ($::rhel_ver == 8 or $::rhel_ver == 9) {
+    } elsif ($::rhel_ver == 8 or $::rhel_ver == 9 or $::rhel_ver == 10) {
         $::pkg_man = "dnf";
         $::debug_dir = "rhel/$::rhel_ver/beta";
         $::x86_64_dir = "rhel/$::rhel_ver/beta";
