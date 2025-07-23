@@ -23,9 +23,9 @@ test-detection:
 	if $(MAKE) -f Makefile.test rpm CXX=/usr/bin/non-existing REQUIRES=missing-require-test ; then true; else false; fi
 	if $(MAKE) -f Makefile.test test CXX=/usr/bin/non-existing REQUIRES=missing-require-test ; then true; else false; fi
 	if $(MAKE) -f Makefile.test test-installed CXX=/usr/bin/non-existing REQUIRES=missing-require-test ; then true; else false; fi
-#
-	$(MAKE) -f Makefile.test check-std CXX=./dummy485.sh EXP_CXX_STD=c++11 REQUIRES=
-	$(MAKE) -f Makefile.test check-std CXX=./dummy841.sh GCC_VERSION="8" EXP_CXX_STD=c++17 REQUIRES=
+#  Does not work if CXX_STD is specified in environmen variable or ~/.smartmet.mk
+#	$(MAKE) -f Makefile.test check-std CXX=./dummy485.sh EXP_CXX_STD=c++11 REQUIRES=
+#	$(MAKE) -f Makefile.test check-std CXX=./dummy841.sh GCC_VERSION="8" EXP_CXX_STD=c++17 REQUIRES=
 
 test-pngcomp:
 	$(MAKE) -C pngdiff test
