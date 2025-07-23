@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 25.2.18
+Version: 25.7.23
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -80,6 +80,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Jul 23 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.7.23-1.fmi
+- Reimplement image comparison (do not use 'magick compare')
+
 * Tue Feb 18 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.2.18-1.fmi
 - Update to gdal-3.10, geos-3.13 and proj-9.5
 
