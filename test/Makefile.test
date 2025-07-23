@@ -1,7 +1,13 @@
+include $(HOME)/.smartmet.mk
+CXX_STD_ORIGIN := $(origin CXX_STD)
+
 include ../makefile-fragments/makefile.inc
 
 all debug test rpm test-installed:
 
 check-std:
+ifeq ($(CXX_STD_ORIGIN), undefined)
+	$(info $(origin CXX_STD))
 	$(info Testing detected C++ language standard for gcc-$(CXX_VERSION_STRING))
 	test "$(CXX_STD)" == "$(EXP_CXX_STD)";
+endif
