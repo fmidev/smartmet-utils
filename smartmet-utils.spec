@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 25.7.23
+Version: 25.8.1
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -80,6 +80,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Aug  1 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.8.1-1.fmi
+- smartbuild: support build for RHEL10
+
 * Wed Jul 23 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.7.23-1.fmi
 - Reimplement image comparison (do not use 'magick compare')
 
