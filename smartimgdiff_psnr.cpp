@@ -1,9 +1,14 @@
 #include <Magick++.h>
 #include <iostream>
 #include <cmath>
+#include <optional>
 #include <string>
 
-double pngdiff(const std::string& image1_path, const std::string& image2_path) {
+double pngdiff(
+    const std::string& image1_path,
+    const std::string& image2_path,
+    const std::optional<std::string>& output_path = std::nullopt)
+{
     using namespace Magick;
     using namespace std;
 
@@ -30,6 +35,24 @@ double pngdiff(const std::string& image1_path, const std::string& image2_path) {
             ? std::numeric_limits<double>::infinity()
             : 20 * log10(1.0 / sqrt(mse));
 
+        if (output_path and mse > 0)
+        {
+            // Save the difference image if output path is provided
+            // Additionally apply contrast stretch to enhance visibility of differences
+            try
+            {
+                // Create a difference image
+                Magick::Image diff_image = img1;
+                diff_image.composite(img2, 0, 0, Magick::CompositeOperator::DifferenceCompositeOp);
+                diff_image.contrastStretch(0.0, 1.0);
+                diff_image.write(*output_path);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << "Failed to write difference image: " << e.what() << '\n';
+            }
+        }
+
         return psnr;
     } catch (const Exception& e) {
         cerr << "Error: " << e.what() << endl;
@@ -37,9 +60,10 @@ double pngdiff(const std::string& image1_path, const std::string& image2_path) {
     }
 }
 
-int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <image1> <image2>" << std::endl;
+int main(int argc, char* argv[])
+{
+    if (argc < 3 || argc > 4) {
+        std::cerr << "Usage: " << argv[0] << " <image1> <image2> [output]" << std::endl;
         return 1;
     }
 
@@ -47,8 +71,9 @@ int main(int argc, char* argv[]) {
 
     std::string image1_path = argv[1];
     std::string image2_path = argv[2];
+    std::optional<std::string> output_path = (argc == 4) ? std::make_optional(argv[3]) : std::nullopt;
 
-    double psnr = pngdiff(image1_path, image2_path);
+    double psnr = pngdiff(image1_path, image2_path, output_path);
     if (psnr >= 0) {
         std::cout << "PSNR: " << psnr << " dB" << std::endl;
     } else {
