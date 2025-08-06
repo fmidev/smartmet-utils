@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 25.8.1
+Version: 25.8.6
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -80,6 +80,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Wed Aug  6 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.8.6-1.fmi
+- smartimgdiff_psnr update
+
 * Fri Aug  1 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.8.1-1.fmi
 - smartbuild: support build for RHEL10
 
