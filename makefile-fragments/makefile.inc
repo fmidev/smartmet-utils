@@ -94,6 +94,14 @@ ifeq ($(USE_CLANG), yes)
   LDFLAGS += --gcc-toolchain=/usr -Wl,--build-id=sha1
 endif
 
+# Force use -march=x86_64 in case of x86_64 CPUs (RHEL10 and RockyLinux10 use
+#   -march=x86_64-v3 that causes problems with number rounding)
+
+__x86_64__ := $(shell $(CXX) -x c++ -E -dD /dev/null 2>/dev/null | grep __x86_64__)
+ifneq ($(__x86_64__),)
+  FLAGS += -march=x86-64
+endif
+
 # Sanitizer support
 
 ifeq ($(TSAN), yes)
