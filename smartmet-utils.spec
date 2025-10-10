@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 25.8.19
+Version: 25.10.10
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -80,6 +80,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Fri Oct 10 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.10.10-1.fmi
+- Use 'uname -m' for detecting processor type
+
 * Tue Aug 19 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.8.19-1.fmi
 - Use always -march=x86-64 for x86_64 CPUs (RHEL10 and RockyLinux 10 default is x86-64-v3)
 
