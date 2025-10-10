@@ -23,7 +23,8 @@ else
   PREFIX = $(PREFIX)
 endif
 
-processor := $(shell uname -p)
+processor := $(shell uname -m)
+
 ifeq ($(processor), x86_64)
   libdir ?= $(PREFIX)/lib64
 else
