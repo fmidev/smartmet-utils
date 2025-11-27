@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 25.10.10
+Version: 25.11.27
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -80,6 +80,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Thu Nov 27 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.11.27-1.fmi
+- smartbuild: exclude smartmet-topography-data from dependency check
+
 * Fri Oct 10 2025 Andris Pavēnis <andris.pavenis@fmi.fi> 25.10.10-1.fmi
 - Use 'uname -m' for detecting processor type
 
