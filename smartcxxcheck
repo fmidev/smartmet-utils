@@ -3,69 +3,94 @@
 use strict;
 use warnings;
 
-sub CxxCheck
+use Data::Dumper;
+
+sub CheckCompiler
 {
     my $CXX = shift;
 
     my $fd;
-    open $fd, "$CXX -x c++ -E -dD /dev/null 2>/dev/null |" or die "Failed to run '$CXX': $!";
+    open $fd, "$CXX -x c++ -E -dM /dev/null 2>/dev/null |" or die "Failed to run '$CXX': $!";
 
-    my $is_clang = 0;
-    my $clang_major;
-    my $clang_version;
+    my $result = ();
 
-    my $gcc_major;
-    my $gcc_minor;
-
-    my $cplusplus;
+    $result->{is_clang} = 0;
+    $result->{is_gcc} = 0;
 
     while (<$fd>) {
         chomp;
         if (m/^#define/) {
             s/^#define\s+//;
             if (m/^__clang_major__\s+(\w+)\s*$/) {
-                $clang_major = $1;
+                $result->{is_clang} = 1;
+                $result->{clang_major} = $1;
             } elsif (m/^__clang_version__\s+(\w+)\s*$/) {
-                $clang_version = $1;
+                $result->{clang_version} = $1;
             } elsif (m/^__GNUC__\s+(\d+)\s*$/) {
-                $gcc_major = $1;
+                $result->{gcc_major} = $1;
             } elsif (m/^__GNUC_MINOR__\s+(\d+)\s*$/) {
-                $gcc_minor = $1;
+                $result->{gcc_minor} = $1;
             } elsif (m/^__cplusplus\s+(\w+)L\s*$/) {
-                $cplusplus = $1;
-        }
-
+                $result->{cplusplus} = $1;
+            }
         } else {
             # Not #define -> ignore it
         }
     }
     close $fd;
 
-    my $result;
-    if (defined $clang_major) {
-        $result->{compiler_id} = "clang++";
-        $result->{compiler_mver} = $clang_major;
-        if ($CXX ne "g++") {
-            my $gpp_info = CxxCheck("g++");
-            $result->{cxx_std} = $gpp_info->{cxx_std};
-        }
-    } elsif (defined $gcc_major) {
-        $result->{compiler_id} = "g++";
-        if ($gcc_major < 5) {
-            $result->{compiler_mver} = "$gcc_major.$gcc_minor";
-        } else {
-            $result->{compiler_mver} = $gcc_major;
-        }
-
-        if ($gcc_major < 7) {
-            $result->{cxx_std} = "c++11";
-        } else {
-            $result->{cxx_std} = "c++17";
-        }
+    if (defined $result->{clang_major}) {
+        $result->{is_clang} = 1;
+        $result->{gcc_major} = undef;
+        $result->{gcc_minor} = undef;
+        $result->{compiler} = "clang++";
+    } elsif (defined $result->{gcc_major}) {
+        $result->{is_gcc} = 1;
+        $result->{compiler} = "g++";
     } else {
-        $result->{compiler_id} = "unknown";
-        $result->{compiler_mver} = 0;
-        $result->{cxx_std} = "c++11";
+        die "Compiler not found or unknown";
+    }
+
+    die "Failed to get compiler info" unless $result->{is_clang} || $result->{is_gcc};
+    die "__cplusplus not defined" unless defined $result->{cplusplus};
+
+    return $result;
+}
+
+sub GetCxxStd
+{
+    my $info = shift;
+
+    defined $info or die "No compiler info provided";
+    $info->{is_gcc} or die "Not a GCC compiler";
+
+    if ($info->{gcc_major} >= 11) {
+        return "c++20";
+    } elsif ($info->{gcc_major} >= 8) {
+        return "c++17";
+    } else {
+        die "C++17 not supported by this GCC version";
+    }
+}
+
+sub CxxCheck
+{
+    my $CXX = shift;
+    my $result = ();
+
+    my $cxx_std;
+    my $r1 = CheckCompiler($CXX);
+    if ($r1->{is_gcc}) {
+        $result->{compiler_id} = "g++";
+        $result->{compiler_mver} = $r1->{gcc_major};
+        $result->{cxx_std} = GetCxxStd($r1);
+    } elsif ($r1->{is_clang}) {
+        my $r2 = CheckCompiler("/usr/bin/g++");
+        $result->{compiler_id} = "clang++";
+        $result->{compiler_mver} = $r1->{clang_major};
+        $result->{cxx_std} = GetCxxStd($r2);
+    } else {
+        die "Unknown compiler type";
     }
 
     return $result;
@@ -73,6 +98,13 @@ sub CxxCheck
 
 my $CXX = defined $ARGV[0] ? $ARGV[0] : "g++";
 
-my $result = CxxCheck($CXX);
+my $result = ();
+
+eval {
+    $result = CxxCheck($CXX);
+};
+if ($@) {
+    print "$CXX 0 c++17";
+}
 
 print "$result->{compiler_id} $result->{compiler_mver} $result->{cxx_std}\n";
