@@ -49,12 +49,12 @@ Requires: perl-JSON-PP
 #TestRequires: bc
 #TestRequires: gcc-c++
 #TestRequires: geos313-devel
-#TestRequires: gdal310-devel
+#TestRequires: gdal312-devel
 #TestRequires: libcurl-devel
 #TestRequires: libtiff-devel >= 4.1
 
 %if 0%{?rhel} && 0%{rhel} >= 8
-#TestRequires: proj95-devel
+#TestRequires: proj97-devel
 #TestRequires: sqlite-devel
 %endif
 
