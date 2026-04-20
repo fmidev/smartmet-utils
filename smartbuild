@@ -919,8 +919,8 @@ sub help
     print "                         of large amount of data if started from wrong directory\n";
     print "  --release-rpms       - build RPM backages of latest release versions\n";
     print "  --release            - build, test and install SmartMet latest release versions\n";
-    print "  --current            - build, test and ubstall current head version of GIT\n";
-    print "                         master branch of packages\n";
+    print "  --current            - build, test and install current head version of GIT\n";
+    print "                         specified branch of packages\n";
     print "  --branch             - GIT branch(es) to use (for example devel:master, use devel, fall back to\n";
     print "                         master if devel is not found\n";
     print "  --recursive          - build also dependencies recursively\n";
