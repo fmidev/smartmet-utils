@@ -415,6 +415,27 @@ sub extract_spec_version($$$)
     }
 }
 
+sub read_spec_version_from_file($)
+{
+    my $path = shift;
+    my ($input, $version, $release);
+    open($input, "<", $path) or die "Failed to open $path: $!";
+    while (<$input>) {
+        chomp;
+        if (m/^\s*Version:\s*(.*?)\s*$/) {
+            $version = $1;
+        } elsif (m/^\s*Release:\s*(.*?)\s*$/) {
+            $release = $1;
+            $release =~ s/\%.*//;
+            $release =~ s/\.fmi$//;
+        }
+    }
+    close $input;
+    defined($version) and defined($release)
+        or die "Failed to extract version/release from $path";
+    return "${version}-${release}";
+}
+
 sub get_spec_file($)
 {
     my $dir = shift;
@@ -675,6 +696,29 @@ sub build_and_install_module($)
     system($cmd) == 0
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
 
+    if ($::settings->{test_rpms}) {
+        # Check out the branch resolved by locate_branch so the actual sources
+        # built match --branch, then create a local smartmkrelease-style version
+        # bump so the RPM does not collide with any tagged release.
+        $cmd = "git -C $tmp checkout $rev $output_redirect_append";
+        print "Execute: $cmd\n";
+        system($cmd) == 0
+            or die "### Failed to check out $rev of $module";
+
+        my $head_sha = `git -C $tmp rev-parse HEAD`;
+        chomp $head_sha;
+        my $msg = "Test version (GIT $rev \@ $head_sha)";
+        $cmd = "( cd $tmp && smartmkrelease \"$msg\" ) $output_redirect_append";
+        print "Execute: $cmd\n";
+        system($cmd) == 0
+            or die "### Failed to create test version for $module";
+
+        # smartmkrelease has rewritten the spec on disk; refresh $ver so the
+        # RPM glob below matches the new Version-Release.
+        $ver = read_spec_version_from_file("$tmp/$spec");
+        $::modules{$module}->{version} = $ver;
+    }
+
     if ($::settings->{builddep}) {
         $cmd = "sudo $::builddep -y $tmp/$spec $output_redirect_append";
         print "Execute: $cmd\n";
@@ -685,7 +729,7 @@ sub build_and_install_module($)
     }
 
     my $make_options = join(' ', @::make_options);
-    if ($::settings->{release_rpms}) {
+    if ($::settings->{release_rpms} or $::settings->{test_rpms}) {
         $cmd = "make -C $tmp rpm $make_options $output_redirect_tee";
         print "Execute: $cmd\n";
         if (system($cmd) == 0) {
@@ -804,14 +848,19 @@ sub build_and_install_module_rpms_recursive
 
     if ($::settings->{release_rpms}) {
         $ret_code = check_available($module);
+    } elsif ($::settings->{test_rpms}) {
+        # Test RPMs are always built from current branch state; skip availability check.
+        $::modules{$module}->{requires_build} = 1;
     }
 
     if ($ret_code) {
-        if (!defined($::installed{$module})
+        if ($::settings->{test_rpms}
+            or !defined($::installed{$module})
             or $::settings->{ignore_installed}
             or ($::installed{$module} ne $::modules{$module}->{"version"})) {
 
-            if (!defined($::settings->{devrpm} and defined($::installed{$module}))) {
+            if (!$::settings->{test_rpms}
+                  and !defined($::settings->{devrpm} and defined($::installed{$module}))) {
                if (defined($::installed{$module})
                      and (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"}))) {
                   print "ERROR: Installed version of $module ($::installed{$module}) is newer than";
@@ -918,6 +967,9 @@ sub help
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";
     print "  --release-rpms       - build RPM backages of latest release versions\n";
+    print "  --test-rpms          - build test RPMs from current branch HEAD\n";
+    print "                         (creates a local smartmkrelease-style version bump,\n";
+    print "                         no release tag required, no availability check)\n";
     print "  --release            - build, test and install SmartMet latest release versions\n";
     print "  --current            - build, test and install current head version of GIT\n";
     print "                         specified branch of packages\n";
@@ -955,6 +1007,7 @@ sub handle_params
         'create-workspace'     => sub { make_path("workspace/mirror"); },
         'branch=s'             => \$param{branches},
         'release-rpms'         => \$param{release_rpms},
+        'test-rpms'            => \$param{test_rpms},
         'release'              => \$param{release},
         'current'              => \$param{current},
         'recursive'            => \$param{recursive},
@@ -1101,9 +1154,9 @@ sub handle_params
     }
 
     my $settings;
-    foreach ('release_rpms', 'release', 'current', 'recursive', 'update_only', 'local_only',
-             'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose', 'separate_logs',
-             'https', 'ignore_installed', 'dump_available') {
+    foreach ('release_rpms', 'test_rpms', 'release', 'current', 'recursive', 'update_only',
+             'local_only', 'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose',
+             'separate_logs', 'https', 'ignore_installed', 'dump_available') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
         } else {
@@ -1166,9 +1219,17 @@ if ($::settings->{release_rpms} and $::settings->{devrpm}) {
     die "Parameters --release-rpms and --devrpm cannot be specified together";
 }
 
+if ($::settings->{release_rpms} and $::settings->{test_rpms}) {
+    die "Parameters --release-rpms and --test-rpms cannot be specified together";
+}
+
+if ($::settings->{test_rpms} and $::settings->{devrpm}) {
+    die "Parameters --test-rpms and --devrpm cannot be specified together";
+}
+
 my $modules_ref = $::config->{modules};
 for my $module (keys %$modules_ref) {
-    if ($::settings->{release_rpms} or $::settings->{devrpm}) {
+    if ($::settings->{release_rpms} or $::settings->{devrpm} or $::settings->{test_rpms}) {
         build_and_install_module_rpms_recursive($module);
     } else {
         build_and_install_module_recursive($module);
