@@ -803,7 +803,7 @@ sub try_install_cached_test_rpm($)
     return 0 unless $sha =~ m/^[0-9a-f]{40}$/;
 
     my $export_dir = get_export_dir($module) . "/$::x86_64_dir";
-    my @candidates = glob("$export_dir/$module-*.rpm");
+    my @candidates = glob("$export_dir/$module-*.el$::rhel_ver.*.rpm");
     return 0 unless @candidates;
 
     my @matched;
