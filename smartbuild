@@ -792,6 +792,42 @@ sub build_and_install_module($)
     }
 }
 
+sub try_install_cached_test_rpm($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = get_mirror_dir($module);
+    my $rev = $::modules{$module}->{git_rev};
+
+    my $sha = `git -C $mirror_dir rev-parse $rev 2>/dev/null`;
+    chomp $sha;
+    return 0 unless $sha =~ m/^[0-9a-f]{40}$/;
+
+    my $export_dir = get_export_dir($module) . "/$::x86_64_dir";
+    my @candidates = glob("$export_dir/$module-*.rpm");
+    return 0 unless @candidates;
+
+    my @matched;
+    foreach my $rpm (@candidates) {
+        my $changelog = `rpm -qp --changelog "$rpm" 2>/dev/null`;
+        if ($changelog =~ m/GIT \S+ \@ \Q$sha\E/) {
+            push @matched, $rpm;
+        }
+    }
+    return 0 unless @matched;
+
+    print "CACHED: $module \@ $sha already built, installing from export dir\n";
+    my $cmd = "sudo $::pkg_man -y localinstall " . join(' ', @matched);
+    print "Execute: $cmd\n";
+    if (execute_cmd($cmd) == 0) {
+        $::modules{$module}->{build} = 1;
+        $::modules{$module}->{install} = 1;
+        return 1;
+    } else {
+        push(@::sudo_failed, $module);
+        return 0;
+    }
+}
+
 sub build_and_install_module_rpms_recursive
 {
     my $module = get_module_name(shift);
@@ -871,12 +907,16 @@ sub build_and_install_module_rpms_recursive
             }
 
             if ($::modules{$module}->{requires_build}) {
-                print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
-                if (build_and_install_module($module)) {
-                    export_rpms($module);
+                if ($::settings->{test_rpms} and try_install_cached_test_rpm($module)) {
+                    # Exact-SHA match found in export dir; installed from cache.
                 } else {
-                    push (@::failed_modules, $module);
-                    $ret_code = 0;
+                    print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
+                    if (build_and_install_module($module)) {
+                        export_rpms($module);
+                    } else {
+                        push (@::failed_modules, $module);
+                        $ret_code = 0;
+                    }
                 }
             }
         }
