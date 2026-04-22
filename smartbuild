@@ -76,6 +76,7 @@ $::workspace = "$::top/workspace";
 $::mirror = "$::workspace/mirror";
 $::base_url='git@github.com:fmidev';
 $::export_dir = "$::workspace/export";
+@::original_argv = @ARGV;
 
 #   ':' separated list of branches (primary, first fallback, jne)
 @::branches_list = ( "master" );
@@ -125,6 +126,126 @@ sub uniq
         $tmp{$_} = 1;
     }
     return sort(keys %tmp);
+}
+
+%::docker_images = (
+    '8'  => 'fmidev/smartmet-cibase-8:latest',
+    '9'  => 'fmidev/smartmet-cibase-9:latest',
+    '10' => 'quay.io/fmi/smartmet-cibase-10:latest',
+);
+
+sub _shell_quote($)
+{
+    my $s = shift;
+    $s =~ s/'/'\\''/g;
+    return "'$s'";
+}
+
+# Parse Requires: lines from the given spec file (all sections).
+# Returns a sorted unique list of plain package names (no version ops, no macros).
+sub get_requires_from_spec($)
+{
+    my $spec_file = shift;
+    return () unless -f $spec_file;
+    my (@pkgs, $in_content);
+    open(my $fh, '<', $spec_file) or return ();
+    while (<$fh>) {
+        chomp;
+        if    (m/^%(prep|build|install|clean|files|changelog)\b/) { $in_content = 0; }
+        elsif (m/^%/)                                              { $in_content = 1; }
+        else                                                       { $in_content //= 1; }
+        next unless $in_content;
+        if (m/^\s*Requires:\s*(.+)/) {
+            for my $tok (split /\s+/, $1) {
+                next if $tok =~ m/[>=<%()\[\]]/;
+                next if $tok eq '';
+                push @pkgs, $tok;
+            }
+        }
+    }
+    close $fh;
+    return uniq @pkgs;
+}
+
+sub run_in_docker($)
+{
+    my $version = shift;
+
+    defined($::docker_images{$version})
+        or die "Unsupported RHEL version '$version' for Docker (supported: 8, 9, 10)";
+
+    my $image = $::docker_images{$version};
+    my $cwd   = Cwd::abs_path(getcwd);
+    my $script = Cwd::abs_path($0);
+
+    # Filter --docker and its value from original args.
+    # Handle both "--docker=VALUE" (one token) and "--docker VALUE" (two tokens).
+    my @inner_args;
+    my $skip_next = 0;
+    for my $arg (@::original_argv) {
+        if ($skip_next)          { $skip_next = 0; next; }
+        if ($arg eq '--docker')  { $skip_next = 1; next; }
+        next if $arg =~ m/^--docker=/;
+        push @inner_args, $arg;
+    }
+    # Auto-add --builddep in Docker mode if not explicitly given
+    unless (grep { $_ eq '--builddep' } @inner_args) {
+        push @inner_args, '--builddep';
+    }
+
+    # Trust all mounted directories — workspace files are owned by the host user,
+    # which differs from the container user, triggering Git's dubious-ownership check.
+    my $git_safe_cmd = "git config --global --add safe.directory '*'";
+    my $inner_cmd = "$git_safe_cmd && " . join(' ', $script, map { _shell_quote($_) } @inner_args);
+
+    # Parse smartbuild's own Requires from the spec file (lives next to the script)
+    my $spec_file = dirname($script) . "/smartmet-utils.spec";
+    my @extra_pkgs = get_requires_from_spec($spec_file);
+
+    # Build a temporary Docker image that has passwordless sudo pre-configured
+    # and all smartbuild runtime dependencies installed.
+    # This avoids needing root rights to modify /etc/sudoers.d at runtime.
+    my $tmp_image = "smartbuild-tmp-$$";
+    print "Building temporary Docker image $tmp_image from $image...\n";
+    open(my $dockerfile_pipe, "|-", "docker", "build", "-t", $tmp_image, "-")
+        or die "Failed to start 'docker build': $!";
+    print $dockerfile_pipe "FROM $image\n";
+    print $dockerfile_pipe "USER root\n";
+    if (@extra_pkgs) {
+        my $pkg_list = join(' ', sort @extra_pkgs);
+        print "Installing into image: $pkg_list\n";
+        print $dockerfile_pipe "RUN dnf install -y $pkg_list\n";
+    }
+    print $dockerfile_pipe "RUN echo 'ALL ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/nopasswd"
+                         . " && chmod 440 /etc/sudoers.d/nopasswd\n";
+    close($dockerfile_pipe)
+        or die "Failed to build temporary Docker image (docker build exit code: " . ($? >> 8) . ")";
+
+    my @docker_run = ('docker', 'run', '--rm', '--interactive');
+    push @docker_run, '--tty' if -t STDIN;
+    push @docker_run, '--volume', "$cwd:$cwd", '--workdir', $cwd;
+
+    # Mount the script separately only when it lives outside the workspace tree
+    if (index($script, $cwd . '/') != 0 && $script ne $cwd) {
+        push @docker_run, '--volume', "$script:$script:ro";
+    }
+
+    # SSH keys for git access
+    my $ssh_dir = defined($ENV{HOME}) ? "$ENV{HOME}/.ssh" : undef;
+    if (defined($ssh_dir) && -d $ssh_dir) {
+        push @docker_run, '--volume', "$ssh_dir:/root/.ssh:ro";
+    }
+
+    push @docker_run, $tmp_image, 'bash', '-c', $inner_cmd;
+
+    print "Running in Docker: $image\n";
+    print "Command: " . join(' ', @docker_run) . "\n";
+    my $ret = system(@docker_run);
+
+    print "Removing temporary Docker image $tmp_image...\n";
+    system('docker', 'image', 'rm', $tmp_image);
+
+    exit($ret == -1 ? 1 : ($ret >> 8));
 }
 
 sub execute_cmd($)
@@ -1033,6 +1154,13 @@ sub help
     print "  --https              - use HTTPS instead of git:// for github.com\n";
     print "  --ignore-installed   - build packages newer than in smartmet-* repos even if already installed locally\n";
     print "  --dump-available     - only dump information about packages found in SmartMet RPM repos\n";
+    print "  --docker=VERSION     - run the build inside a Docker container for the given RHEL version\n";
+    print "                         (supported: 8, 9, 10). Workspace directory is mounted into the\n";
+    print "                         container so built/cached packages are shared across distro versions.\n";
+    print "                         Docker images used:\n";
+    foreach my $ver (sort { $a <=> $b } keys %::docker_images) {
+        printf("                           %2s => %s\n", $ver, $::docker_images{$ver});
+    }
     print "\n";
 }
 
@@ -1068,7 +1196,8 @@ sub handle_params
         'separate-logs'        => \$param{separate_logs},
         'https'                => \$param{https},
         'ignore-installed'     => \$param{ignore_installed},
-        'dump-available'       => \$param{dump_available}
+        'dump-available'       => \$param{dump_available},
+        'docker=s'             => \$param{docker}
         );
 
     my $config;
@@ -1204,6 +1333,8 @@ sub handle_params
         }
     }
 
+    $settings->{docker_version} = $param{docker} if defined($param{docker});
+
     if ($settings->{https}) {
         $::base_url = 'https://github.com/fmidev';
     }
@@ -1215,6 +1346,11 @@ sub handle_params
 }
 
 handle_params;
+
+if (defined($::settings->{docker_version})) {
+    run_in_docker($::settings->{docker_version});
+    exit(0);
+}
 
 if ($::settings->{dump_config}) {
     my $json = JSON::PP->new->allow_nonref;
