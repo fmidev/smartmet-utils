@@ -193,10 +193,19 @@ sub run_in_docker($)
         push @inner_args, '--builddep';
     }
 
+    # Propagate host git identity into the container so commits made during the
+    # build (e.g. by smartmkrelease) carry the correct author information.
+    my $git_user_name  = `git config --global user.name  2>/dev/null`; chomp $git_user_name;
+    my $git_user_email = `git config --global user.email 2>/dev/null`; chomp $git_user_email;
+
+    my @git_setup;
+    push @git_setup, "git config --global user.name  " . _shell_quote($git_user_name)  if $git_user_name;
+    push @git_setup, "git config --global user.email " . _shell_quote($git_user_email) if $git_user_email;
     # Trust all mounted directories — workspace files are owned by the host user,
     # which differs from the container user, triggering Git's dubious-ownership check.
-    my $git_safe_cmd = "git config --global --add safe.directory '*'";
-    my $inner_cmd = "$git_safe_cmd && " . join(' ', $script, map { _shell_quote($_) } @inner_args);
+    push @git_setup, "git config --global --add safe.directory '*'";
+
+    my $inner_cmd = join(' && ', @git_setup, join(' ', $script, map { _shell_quote($_) } @inner_args));
 
     # Parse smartbuild's own Requires from the spec file (lives next to the script)
     my $spec_file = dirname($script) . "/smartmet-utils.spec";
