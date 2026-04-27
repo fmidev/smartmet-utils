@@ -491,6 +491,11 @@ endif
 # `make abicheck-deep` additionally runs libabigail's abicompat per
 # consumer (catches struct-layout / inline-body breaks).
 
+# Ensure these rules never become the default goal of an including
+# Makefile. Without this, `make` with no args would pick `abicheck`
+# (the first target make sees) instead of the project's own `all`.
+.DEFAULT_GOAL := all
+
 .PHONY: abicheck abicheck-deep
 
 abicheck: $(LIBFILE)
