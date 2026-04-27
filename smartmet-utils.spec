@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.2.4
+Version: 26.4.27
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -82,6 +82,10 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Mon Apr 27 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.27-1.fmi
+- Add smartabicheck and 'make abicheck' / 'make abicheck-deep' targets
+  for per-consumer ABI sanity checking against installed RPMs
+
 * Wed Feb  4 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.2.4-1.fmi
 - Update to proj-9.7, gdal-3.12, fmt-12
 
