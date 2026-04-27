@@ -34,6 +34,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %package devel
 Summary: FMI SmartSet server development related utils and files
+Provides: smartabicheck
 Provides: smartbuildrev
 Provides: smartmkrelease
 Provides: smartmktag
@@ -65,6 +66,7 @@ FMI SmartSet server development related utils and files
 
 %files devel
 %defattr(0775,root,root,0775)
+%{_bindir}/smartabicheck
 %{_bindir}/smartbuild
 %{_bindir}/smartbuildcfg
 %{_bindir}/smartbuildrev

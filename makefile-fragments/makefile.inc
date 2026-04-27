@@ -479,3 +479,22 @@ WITH_TESTS ?=
 ifneq ($(WITH_TESTS),)
   RPMBUILD_OPT += --define "with-tests 1"
 endif
+
+#############################
+#       ABI check           #
+#############################
+#
+# `make abicheck` compares the freshly-built $(LIBFILE) against the
+# currently-installed RPM and reports whether installed consumers would
+# still link, plus warns on vtable / exported-data layout changes.
+#
+# `make abicheck-deep` additionally runs libabigail's abicompat per
+# consumer (catches struct-layout / inline-body breaks).
+
+.PHONY: abicheck abicheck-deep
+
+abicheck: $(LIBFILE)
+	@smartabicheck $(SUBNAME) $(LIBFILE)
+
+abicheck-deep: $(LIBFILE)
+	@smartabicheck $(SUBNAME) $(LIBFILE) --deep

@@ -5,6 +5,7 @@ __SMARTCXXCHECK__ := ./smartcxxcheck
 include makefile-fragments/makefile.inc
 
 PROG = \
+	smartabicheck \
 	smartbuild \
 	smartbuildrev \
 	smartbuildtmprpm \
