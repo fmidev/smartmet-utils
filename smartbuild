@@ -198,17 +198,20 @@ sub run_in_docker($)
     my $git_user_name  = `git config --global user.name  2>/dev/null`; chomp $git_user_name;
     my $git_user_email = `git config --global user.email 2>/dev/null`; chomp $git_user_email;
 
-    my @git_setup;
-    push @git_setup, "git config --global user.name  " . _shell_quote($git_user_name)  if $git_user_name;
-    push @git_setup, "git config --global user.email " . _shell_quote($git_user_email) if $git_user_email;
+    my $script_dir = dirname($script);
+
+    my @inner_setup;
+    push @inner_setup, "export PATH=" . _shell_quote($script_dir) . ":\$PATH";
+    push @inner_setup, "git config --global user.name  " . _shell_quote($git_user_name)  if $git_user_name;
+    push @inner_setup, "git config --global user.email " . _shell_quote($git_user_email) if $git_user_email;
     # Trust all mounted directories — workspace files are owned by the host user,
     # which differs from the container user, triggering Git's dubious-ownership check.
-    push @git_setup, "git config --global --add safe.directory '*'";
+    push @inner_setup, "git config --global --add safe.directory '*'";
 
-    my $inner_cmd = join(' && ', @git_setup, join(' ', $script, map { _shell_quote($_) } @inner_args));
+    my $inner_cmd = join(' && ', @inner_setup, join(' ', $script, map { _shell_quote($_) } @inner_args));
 
     # Parse smartbuild's own Requires from the spec file (lives next to the script)
-    my $spec_file = dirname($script) . "/smartmet-utils.spec";
+    my $spec_file = "$script_dir/smartmet-utils.spec";
     my @extra_pkgs = get_requires_from_spec($spec_file);
 
     # Build a temporary Docker image that has passwordless sudo pre-configured
@@ -234,9 +237,12 @@ sub run_in_docker($)
     push @docker_run, '--tty' if -t STDIN;
     push @docker_run, '--volume', "$cwd:$cwd", '--workdir', $cwd;
 
-    # Mount the script separately only when it lives outside the workspace tree
-    if (index($script, $cwd . '/') != 0 && $script ne $cwd) {
-        push @docker_run, '--volume', "$script:$script:ro";
+    # Mount smartbuild plus all smart* helper scripts (smartmkrelease, smartmktag, ...)
+    # at the same path as on the host. Skip files already covered by the workspace
+    # volume mount.
+    for my $f (grep { -f $_ } glob("$script_dir/smart*")) {
+        next if index($f, $cwd . '/') == 0;
+        push @docker_run, '--volume', "$f:$f:ro";
     }
 
     # SSH keys for git access
