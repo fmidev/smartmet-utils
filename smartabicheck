@@ -65,15 +65,24 @@ if [ "$n" = 0 ]; then
 fi
 
 # ----- 1) Per-consumer link check -----
+# Diff `ldd -r` against the consumer with vs without the new library
+# substituted in via LD_LIBRARY_PATH. Only symbols that became
+# unresolved as a result of the substitution are real breaks introduced
+# by this build. Pre-existing unresolved symbols (from other stale
+# libraries on this machine) appear in both runs and cancel out.
+ldd_undef() {
+    c++filt | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
+        | sed -E 's/[[:space:]]*\([^()]*\)$//' | sort -u
+}
 fail=0
 for f in $consumers; do
-    out=$(LD_LIBRARY_PATH=$(dirname "$newlib") ldd -r "$f" 2>&1 | c++filt \
-          | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
-          | sed -E 's/[[:space:]]*\([^()]*\)$//' || true)
-    if [ -n "$out" ]; then
+    base=$(ldd -r "$f" 2>&1 | ldd_undef)
+    with_new=$(LD_LIBRARY_PATH=$(dirname "$newlib") ldd -r "$f" 2>&1 | ldd_undef)
+    new_breaks=$(comm -13 <(echo "$base") <(echo "$with_new") || true)
+    if [ -n "$new_breaks" ]; then
         echo
         echo "BREAK: $f"
-        echo "$out" | sed 's/^/  /'
+        echo "$new_breaks" | sed 's/^/  /'
         fail=1
     fi
 done
@@ -90,12 +99,19 @@ trap "rm -f $old_t $new_t" EXIT
 sigs "$oldlib" > "$old_t"
 sigs "$newlib" > "$new_t"
 
-changes=$(diff "$old_t" "$new_t" | grep -E '^[<>] _Z' | c++filt | head -30 || true)
+# Only warn on entries present in the OLD lib but not the NEW (i.e. lines
+# starting with `<`). Pure additions in the new lib (lines starting with
+# `>` only) are backward-compatible — old consumers can't depend on
+# symbols that didn't exist when they were built. Size changes show as
+# both `<` and `>` for the same symbol, so the `<` filter still catches
+# them; we then print the full diff for context.
+removals_or_changes=$(diff "$old_t" "$new_t" | grep -E '^< _Z' || true)
 suspect=0
-if [ -n "$changes" ]; then
+if [ -n "$removals_or_changes" ]; then
+    full_diff=$(diff "$old_t" "$new_t" | grep -E '^[<>] _Z' | c++filt | head -30)
     echo
     echo "WARNING: vtable / typeinfo / exported-data signatures changed:"
-    echo "$changes" | sed 's/^/  /'
+    echo "$full_diff" | sed 's/^/  /'
     echo
     echo "Consumers may still link, but vtable or layout changes can break them"
     echo "silently at runtime. Run 'make abicheck-deep' for type-aware verification."

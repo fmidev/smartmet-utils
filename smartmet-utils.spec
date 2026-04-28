@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.4.27
+Version: 26.4.28
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -82,6 +82,11 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-1.fmi
+- smartabicheck: ignore unrelated pre-existing breakage by diffing
+  ldd -r before/after substituting in the new library, and only warn
+  on vtable/data symbol removals (additions are backward-compatible)
+
 * Mon Apr 27 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.27-1.fmi
 - Add smartabicheck and 'make abicheck' / 'make abicheck-deep' targets
   for per-consumer ABI sanity checking against installed RPMs
