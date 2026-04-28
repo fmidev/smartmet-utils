@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.4.28
-Release: 2%{?dist}.fmi
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -84,6 +84,16 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-3.fmi
+- smartcheckinstalled: classify each unresolved symbol against an
+  index of installed libsmartmet-*.so and engine .so files, and
+  recommend the right action (add -l<lib>, rebuild against current
+  headers, or report missing provider). Engine-supplied symbols
+  (late-bound at runtime) are now suppressed correctly. Skip
+  /usr/share/smartmet/python/ since those C-extensions resolve
+  Python C-API symbols from the interpreter at runtime, not from
+  smartmet libraries.
+
 * Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-2.fmi
 - New script smartcheckinstalled: scans every installed SmartMet ELF
   for unresolved symbols. Intended as a pre-deployment gate to catch

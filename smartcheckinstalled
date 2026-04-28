@@ -5,16 +5,102 @@
 # and binary that links a libsmartmet-* library, and reports any
 # unresolved symbols.
 #
-# An unresolved symbol means consumer and library versions don't match
-# in the currently-installed RPM set: the .so will fail at runtime when
-# the symbol is first touched. Intended as a pre-deployment gate.
+# For each unresolved symbol, scans installed libsmartmet-*.so and
+# engine .so files to identify the source and the right action:
 #
-# Usage: smartcheckinstalled
+#   - found in an engine -> late-bound at runtime (suppressed; expected)
+#   - found in a libsmartmet-* not in DT_NEEDED -> suggest -l<lib>
+#   - found in a libsmartmet-* already linked -> signature mismatch flag
+#   - not found anywhere -> the providing package is missing or stale
 #
-# Exit status: 0 if all clean, 1 if any binary has unresolved symbols,
-# 2 on usage error.
+# Exit status: 0 if all clean, 1 if any binary has unresolved symbols
+# that cannot be explained by a late-bound engine, 2 on usage error.
 
 set -eu
+
+if [ $# -gt 0 ]; then
+    echo "Usage: $0" >&2
+    exit 2
+fi
+
+TMP=$(mktemp -d)
+trap "rm -rf $TMP" EXIT
+INDEX="$TMP/index.tsv"
+breakfile="$TMP/breaks"
+
+# Build symbol -> source index from installed libsmartmet-*.so and engine .so.
+# Each line: <demangled-symbol><TAB><source>
+# Source is "lib:<short>" (e.g. lib:smartmet-spine) or
+#           "engine:<short>" (e.g. engine:sputnik).
+{
+    for lib in /usr/lib64/libsmartmet-*.so; do
+        [ -f "$lib" ] || continue
+        short=$(basename "$lib" | sed -E 's/^lib(.+)\.so$/\1/')
+        nm -D --defined-only --extern-only "$lib" 2>/dev/null \
+            | c++filt \
+            | sed -nE "s/^[0-9a-f]+ [A-Z] (.+)$/\\1\\tlib:$short/p"
+    done
+    for eng in /usr/share/smartmet/engines/*.so; do
+        [ -f "$eng" ] || continue
+        short=$(basename "$eng" .so)
+        nm -D --defined-only --extern-only "$eng" 2>/dev/null \
+            | c++filt \
+            | sed -nE "s/^[0-9a-f]+ [A-Z] (.+)$/\\1\\tengine:$short/p"
+    done
+} > "$INDEX"
+
+ldd_undef() {
+    c++filt | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
+        | sed -E 's/[[:space:]]*\([^()]*\)$//' | sort -u
+}
+
+classify() {
+    local sym="$1"
+    local src prefix
+
+    # 1. Exact match -- the symbol is provided as-is by some lib/engine.
+    src=$(awk -F'\t' -v s="$sym" '$1 == s {print $2; exit}' "$INDEX")
+    if [ -n "$src" ]; then
+        echo "$src"
+        return
+    fi
+
+    # 2. Function-name match: same function, different parameter list.
+    case "$sym" in
+        *"("*)
+            prefix=$(echo "$sym" | sed -E 's/\(.*$/(/')
+            src=$(awk -F'\t' -v p="$prefix" \
+                'substr($1, 1, length(p)) == p {print $2; exit}' "$INDEX")
+            if [ -n "$src" ]; then
+                echo "near:$src"
+                return
+            fi
+            ;;
+    esac
+
+    # 3. Class-scope match: same enclosing class/namespace exists, but the
+    # symbol's leaf name changed (renamed or moved). Catches things like
+    # method foo() being renamed to fooImpl() between releases.
+    case "$sym" in
+        *"::"*"("*)
+            prefix=$(echo "$sym" | sed -E 's/::[^:(]*\(.*$/::/')
+            ;;
+        *"::"*)
+            prefix=$(echo "$sym" | sed -E 's/::[^:]*$/::/')
+            ;;
+        *) prefix="" ;;
+    esac
+    if [ -n "$prefix" ]; then
+        src=$(awk -F'\t' -v p="$prefix" \
+            'substr($1, 1, length(p)) == p {print $2; exit}' "$INDEX")
+        if [ -n "$src" ]; then
+            echo "near:$src"
+            return
+        fi
+    fi
+
+    echo ""
+}
 
 fail=0
 n=0
@@ -22,13 +108,62 @@ n=0
 while read -r f; do
     [ -n "$f" ] || continue
     n=$((n + 1))
-    out=$(ldd -r "$f" 2>&1 | c++filt \
-          | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
-          | sed -E 's/[[:space:]]*\([^()]*\)$//' | sort -u || true)
-    if [ -n "$out" ]; then
+
+    : > "$breakfile"
+
+    needed=$(readelf -d "$f" 2>/dev/null | grep NEEDED \
+             | grep -oE 'libsmartmet-[a-z_-]+\.so' \
+             | sed -E 's/^lib(.+)\.so$/\1/')
+
+    while read -r line; do
+        [ -n "$line" ] || continue
+        sym="${line#undefined symbol: }"
+        source=$(classify "$sym")
+        case "$source" in
+            engine:*)
+                # Late-bound at runtime via the server; expected.
+                ;;
+            lib:*)
+                lib_name=${source#lib:}
+                if echo "$needed" | grep -qFx "$lib_name"; then
+                    {
+                        echo "  $sym"
+                        echo "    -> in $lib_name (linked, symbol absent -- signature mismatch?)"
+                    } >> "$breakfile"
+                else
+                    {
+                        echo "  $sym"
+                        echo "    -> in $lib_name -- add -l$lib_name"
+                    } >> "$breakfile"
+                fi
+                ;;
+            near:lib:*)
+                lib_name=${source#near:lib:}
+                {
+                    echo "  $sym"
+                    echo "    -> $lib_name has the same function name with a different signature -- rebuild against current headers"
+                } >> "$breakfile"
+                ;;
+            near:engine:*)
+                eng_name=${source#near:engine:}
+                {
+                    echo "  $sym"
+                    echo "    -> engine $eng_name has the same function name with a different signature -- rebuild against current headers"
+                } >> "$breakfile"
+                ;;
+            *)
+                {
+                    echo "  $sym"
+                    echo "    -> no installed smartmet library defines this"
+                } >> "$breakfile"
+                ;;
+        esac
+    done < <(ldd -r "$f" 2>&1 | ldd_undef)
+
+    if [ -s "$breakfile" ]; then
         echo
         echo "BROKEN: $f"
-        echo "$out" | sed 's/^/  /'
+        cat "$breakfile"
         fail=1
     fi
 done < <(
@@ -36,7 +171,10 @@ done < <(
         | xargs -r rpm -ql 2>/dev/null \
         | sort -u \
         | while read -r g; do
-              case "$g" in */.build-id/*) continue ;; esac
+              case "$g" in
+                  */.build-id/*) continue ;;
+                  /usr/share/smartmet/python/*) continue ;;  # python C-extensions; symbols come from libpython at runtime
+              esac
               [ -f "$g" ] || continue
               readelf -d "$g" 2>/dev/null | grep -q 'libsmartmet-' || continue
               echo "$g"
@@ -51,8 +189,8 @@ fi
 if [ $fail -ne 0 ]; then
     echo
     echo "smartcheckinstalled: FAILED -- installed package set has unresolved symbols."
-    echo "Reinstall the affected packages until consumer and library versions match;"
-    echo "do not ship to production with broken loads."
+    echo "Fix the indicated -l/library issues, or reinstall packages until consumer"
+    echo "and library versions match. Do not ship to production with broken loads."
     exit 1
 fi
 
