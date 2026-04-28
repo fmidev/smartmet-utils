@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# smartcheckinstalled -- verify the installed SmartMet package set is
+# self-consistent. Runs `ldd -r` against every installed plugin, engine,
+# and binary that links a libsmartmet-* library, and reports any
+# unresolved symbols.
+#
+# An unresolved symbol means consumer and library versions don't match
+# in the currently-installed RPM set: the .so will fail at runtime when
+# the symbol is first touched. Intended as a pre-deployment gate.
+#
+# Usage: smartcheckinstalled
+#
+# Exit status: 0 if all clean, 1 if any binary has unresolved symbols,
+# 2 on usage error.
+
+set -eu
+
+fail=0
+n=0
+
+while read -r f; do
+    [ -n "$f" ] || continue
+    n=$((n + 1))
+    out=$(ldd -r "$f" 2>&1 | c++filt \
+          | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
+          | sed -E 's/[[:space:]]*\([^()]*\)$//' | sort -u || true)
+    if [ -n "$out" ]; then
+        echo
+        echo "BROKEN: $f"
+        echo "$out" | sed 's/^/  /'
+        fail=1
+    fi
+done < <(
+    rpm -qa 'smartmet-*' --qf '%{NAME}\n' 2>/dev/null \
+        | xargs -r rpm -ql 2>/dev/null \
+        | sort -u \
+        | while read -r g; do
+              case "$g" in */.build-id/*) continue ;; esac
+              [ -f "$g" ] || continue
+              readelf -d "$g" 2>/dev/null | grep -q 'libsmartmet-' || continue
+              echo "$g"
+          done
+)
+
+if [ $n = 0 ]; then
+    echo "smartcheckinstalled: no installed SmartMet ELFs found"
+    exit 0
+fi
+
+if [ $fail -ne 0 ]; then
+    echo
+    echo "smartcheckinstalled: FAILED -- installed package set has unresolved symbols."
+    echo "Reinstall the affected packages until consumer and library versions match;"
+    echo "do not ship to production with broken loads."
+    exit 1
+fi
+
+echo "smartcheckinstalled: OK ($n binary/binaries clean)"
+exit 0

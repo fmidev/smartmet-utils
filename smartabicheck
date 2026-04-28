@@ -51,7 +51,7 @@ consumers=""
 for p in $(rpm -q --whatrequires "$pkg" 2>/dev/null); do
     rpm -q "$p" >/dev/null 2>&1 || continue   # skip "no package requires" text
     for f in $(rpm -ql "$p" 2>/dev/null); do
-        case "$f" in /usr/lib/.build-id/*) continue ;; esac  # debuginfo symlinks
+        case "$f" in */.build-id/*) continue ;; esac  # debuginfo symlinks
         [ -f "$f" ] || continue
         if readelf -d "$f" 2>/dev/null | grep -q "libsmartmet-$name"; then
             consumers="$consumers $f"

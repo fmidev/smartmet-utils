@@ -6,6 +6,7 @@ include makefile-fragments/makefile.inc
 
 PROG = \
 	smartabicheck \
+	smartcheckinstalled \
 	smartbuild \
 	smartbuildrev \
 	smartbuildtmprpm \
