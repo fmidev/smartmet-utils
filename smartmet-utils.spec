@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.2.4
-Release: 1%{?dist}.fmi
+Version: 26.4.28
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -34,6 +34,8 @@ rm -rf $RPM_BUILD_ROOT
 
 %package devel
 Summary: FMI SmartSet server development related utils and files
+Provides: smartabicheck
+Provides: smartcheckinstalled
 Provides: smartbuildrev
 Provides: smartmkrelease
 Provides: smartmktag
@@ -65,6 +67,8 @@ FMI SmartSet server development related utils and files
 
 %files devel
 %defattr(0775,root,root,0775)
+%{_bindir}/smartabicheck
+%{_bindir}/smartcheckinstalled
 %{_bindir}/smartbuild
 %{_bindir}/smartbuildcfg
 %{_bindir}/smartbuildrev
@@ -80,6 +84,33 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-3.fmi
+- smartcheckinstalled: classify each unresolved symbol against an
+  index of installed libsmartmet-*.so and engine .so files, and
+  recommend the right action (add -l<lib>, rebuild against current
+  headers, or report missing provider). Engine-supplied symbols
+  (late-bound at runtime) are now suppressed correctly. Skip
+  /usr/share/smartmet/python/ since those C-extensions resolve
+  Python C-API symbols from the interpreter at runtime, not from
+  smartmet libraries.
+
+* Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-2.fmi
+- New script smartcheckinstalled: scans every installed SmartMet ELF
+  for unresolved symbols. Intended as a pre-deployment gate to catch
+  inconsistent installed-package sets before they reach production.
+- Both scripts: broaden debuginfo-symlink filter to */.build-id/*
+  (was only catching /usr/lib/.build-id/*, missing the parallel
+  /usr/lib/debug/.build-id/* tree).
+
+* Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-1.fmi
+- smartabicheck: ignore unrelated pre-existing breakage by diffing
+  ldd -r before/after substituting in the new library, and only warn
+  on vtable/data symbol removals (additions are backward-compatible)
+
+* Mon Apr 27 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.27-1.fmi
+- Add smartabicheck and 'make abicheck' / 'make abicheck-deep' targets
+  for per-consumer ABI sanity checking against installed RPMs
+
 * Wed Feb  4 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.2.4-1.fmi
 - Update to proj-9.7, gdal-3.12, fmt-12
 

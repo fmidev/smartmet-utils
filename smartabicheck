@@ -1,0 +1,143 @@
+#!/bin/bash
+#
+# smartabicheck -- quick ABI sanity check for SmartMet libraries.
+#
+# Usage: smartabicheck NAME NEWLIB [--deep]
+#
+# Compares a freshly-built library against the currently-installed RPM
+# version, then asks whether each installed consumer would still link.
+# With --deep, also runs libabigail's abicompat per consumer for full
+# type-aware checking.
+#
+# Cheap layer detects:
+#   - Removed / renamed / signature-changed symbols (link-time breakage)
+#   - Vtable size changes  (silent virtual-dispatch breakage)
+#   - Exported data size changes (silent global-layout breakage)
+#
+# Cheap layer does NOT detect:
+#   - Private struct member added / reordered
+#   - Inline function body changes
+#   - Enum value renumbering
+# Run --deep for those.
+
+set -eu
+
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 NAME NEWLIB [--deep]" >&2
+    exit 2
+fi
+
+name=$1
+newlib=$2
+deep=${3:-}
+
+if [ ! -f "$newlib" ]; then
+    echo "smartabicheck: $newlib not found" >&2
+    exit 2
+fi
+
+pkg="smartmet-library-$name"
+oldlib=$(rpm -ql "$pkg" 2>/dev/null | grep '\.so$' | head -1 || true)
+if [ -z "$oldlib" ] || [ ! -f "$oldlib" ]; then
+    echo "abicheck: $pkg not installed; nothing to compare"
+    exit 0
+fi
+
+echo "abicheck: $newlib"
+echo "    vs.: $oldlib"
+
+# ----- find installed consumers (binaries that NEED libsmartmet-$name) -----
+consumers=""
+for p in $(rpm -q --whatrequires "$pkg" 2>/dev/null); do
+    rpm -q "$p" >/dev/null 2>&1 || continue   # skip "no package requires" text
+    for f in $(rpm -ql "$p" 2>/dev/null); do
+        case "$f" in */.build-id/*) continue ;; esac  # debuginfo symlinks
+        [ -f "$f" ] || continue
+        if readelf -d "$f" 2>/dev/null | grep -q "libsmartmet-$name"; then
+            consumers="$consumers $f"
+        fi
+    done
+done
+
+n=$(echo $consumers | wc -w)
+if [ "$n" = 0 ]; then
+    echo "abicheck: no installed consumers depend on $pkg"
+fi
+
+# ----- 1) Per-consumer link check -----
+# Diff `ldd -r` against the consumer with vs without the new library
+# substituted in via LD_LIBRARY_PATH. Only symbols that became
+# unresolved as a result of the substitution are real breaks introduced
+# by this build. Pre-existing unresolved symbols (from other stale
+# libraries on this machine) appear in both runs and cancel out.
+ldd_undef() {
+    c++filt | grep '^undefined symbol' | grep -v 'SmartMet::Engine::' \
+        | sed -E 's/[[:space:]]*\([^()]*\)$//' | sort -u
+}
+fail=0
+for f in $consumers; do
+    base=$(ldd -r "$f" 2>&1 | ldd_undef)
+    with_new=$(LD_LIBRARY_PATH=$(dirname "$newlib") ldd -r "$f" 2>&1 | ldd_undef)
+    new_breaks=$(comm -13 <(echo "$base") <(echo "$with_new") || true)
+    if [ -n "$new_breaks" ]; then
+        echo
+        echo "BREAK: $f"
+        echo "$new_breaks" | sed 's/^/  /'
+        fail=1
+    fi
+done
+
+# ----- 2) Vtable / typeinfo / exported-data signature diff -----
+sigs() {
+    nm --print-size --defined-only --extern-only "$1" 2>/dev/null \
+      | awk 'NF == 4 && ($4 ~ /^_ZT[VIS]/ || $3 ~ /^[DBRG]$/) {print $4, $2}' \
+      | sort
+}
+
+old_t=$(mktemp); new_t=$(mktemp)
+trap "rm -f $old_t $new_t" EXIT
+sigs "$oldlib" > "$old_t"
+sigs "$newlib" > "$new_t"
+
+# Only warn on entries present in the OLD lib but not the NEW (i.e. lines
+# starting with `<`). Pure additions in the new lib (lines starting with
+# `>` only) are backward-compatible — old consumers can't depend on
+# symbols that didn't exist when they were built. Size changes show as
+# both `<` and `>` for the same symbol, so the `<` filter still catches
+# them; we then print the full diff for context.
+removals_or_changes=$(diff "$old_t" "$new_t" | grep -E '^< _Z' || true)
+suspect=0
+if [ -n "$removals_or_changes" ]; then
+    full_diff=$(diff "$old_t" "$new_t" | grep -E '^[<>] _Z' | c++filt | head -30)
+    echo
+    echo "WARNING: vtable / typeinfo / exported-data signatures changed:"
+    echo "$full_diff" | sed 's/^/  /'
+    echo
+    echo "Consumers may still link, but vtable or layout changes can break them"
+    echo "silently at runtime. Run 'make abicheck-deep' for type-aware verification."
+    suspect=1
+fi
+
+# ----- 3) Deep check (opt-in, requires libabigail) -----
+if [ "$deep" = "--deep" ]; then
+    if ! command -v abicompat >/dev/null 2>&1; then
+        echo
+        echo "abicheck-deep: needs libabigail (dnf install libabigail)" >&2
+        exit 2
+    fi
+    echo
+    echo "abicheck-deep: running abicompat per consumer..."
+    for f in $consumers; do
+        if ! abicompat "$f" "$oldlib" "$newlib"; then
+            fail=1
+        fi
+    done
+fi
+
+if [ $fail -ne 0 ]; then
+    exit 1
+fi
+if [ $suspect -eq 0 ]; then
+    echo "abicheck: OK ($n consumer(s) checked)"
+fi
+exit 0

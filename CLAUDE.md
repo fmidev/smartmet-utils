@@ -39,6 +39,7 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 
 | Script | Language | Purpose |
 |---|---|---|
+| `smartabicheck` | Bash | ABI sanity check for a freshly-built library against installed consumers (used by `make abicheck` / `make abicheck-deep` in `makefile.inc`) |
 | `smartbuild` | Perl | Orchestrates building all SmartMet packages in dependency order from git repos; manages workspace of bare clones |
 | `smartbuildcfg` | Perl | `--prefix` returns the install prefix (derived from script location); also supports `--cflags`/`--libs` |
 | `smartbuildrev` | Perl | Checks out a git revision into a temp dir and builds its RPM |
@@ -58,7 +59,7 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 - **Non-standard library paths**: GDAL, GEOS, PROJ, SQLite, SpatiaLite, and libconfig are searched in versioned install prefixes (e.g., `/usr/gdal312/`, `/usr/proj97/`) before falling back to system paths.
 - **Compiler auto-detection**: `smartcxxcheck` probes preprocessor defines to identify g++ vs clang++ and select `c++17` or `c++20` (GCC 11+).
 - **Sanitizers**: `TSAN=yes` or `ASAN=yes` on the make command line enables thread or address sanitizer.
-- **ABI checking**: `makefile-abicheck.inc` provides `make abi-check rev1=<tag> [rev2=<tag>]` targets using `abi-dumper` and `abi-compliance-checker`.
+- **ABI checking**: `makefile.inc` itself provides `make abicheck` (per-consumer link check + vtable/data signature diff) and `make abicheck-deep` (adds libabigail `abicompat`), backed by the `smartabicheck` script. Separately, the older `makefile-abicheck.inc` provides `make abi-check rev1=<tag> [rev2=<tag>]` for comparing two git revisions of the same library via `abi-dumper` + `abi-compliance-checker`.
 
 ## CI
 
