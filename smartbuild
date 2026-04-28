@@ -198,6 +198,12 @@ sub run_in_docker($)
     my $git_user_name  = `git config --global user.name  2>/dev/null`; chomp $git_user_name;
     my $git_user_email = `git config --global user.email 2>/dev/null`; chomp $git_user_email;
 
+    # Run inside the container as the host user so that:
+    #   - mounted workspace files (owned by the host UID) are writable
+    #   - processes that refuse to run as root (e.g. initdb) work correctly
+    my $host_uid = $<;
+    my ($host_gid) = split /\s+/, $(;
+
     my $script_dir = dirname($script);
 
     my @inner_setup;
@@ -230,11 +236,18 @@ sub run_in_docker($)
     }
     print $dockerfile_pipe "RUN echo 'ALL ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/nopasswd"
                          . " && chmod 440 /etc/sudoers.d/nopasswd\n";
+    # Create a home directory owned by the host UID/GID so tools that refuse
+    # to run as root (e.g. initdb, rpmbuild) work, and so git/rpm config files
+    # land somewhere writable.
+    print $dockerfile_pipe "RUN mkdir -p /home/builduser"
+                         . " && chown $host_uid:$host_gid /home/builduser\n";
     close($dockerfile_pipe)
         or die "Failed to build temporary Docker image (docker build exit code: " . ($? >> 8) . ")";
 
     my @docker_run = ('docker', 'run', '--rm', '--interactive');
     push @docker_run, '--tty' if -t STDIN;
+    push @docker_run, '--user', "$host_uid:$host_gid";
+    push @docker_run, '--env', 'HOME=/home/builduser';
     push @docker_run, '--volume', "$cwd:$cwd", '--workdir', $cwd;
 
     # Mount smartbuild plus all smart* helper scripts (smartmkrelease, smartmktag, ...)
@@ -245,10 +258,10 @@ sub run_in_docker($)
         push @docker_run, '--volume', "$f:$f:ro";
     }
 
-    # SSH keys for git access
+    # SSH keys for git access — mount into the build user's home, not /root
     my $ssh_dir = defined($ENV{HOME}) ? "$ENV{HOME}/.ssh" : undef;
     if (defined($ssh_dir) && -d $ssh_dir) {
-        push @docker_run, '--volume', "$ssh_dir:/root/.ssh:ro";
+        push @docker_run, '--volume', "$ssh_dir:/home/builduser/.ssh:ro";
     }
 
     push @docker_run, $tmp_image, 'bash', '-c', $inner_cmd;
