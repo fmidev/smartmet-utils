@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.4.28
-Release: 3%{?dist}.fmi
+Version: 26.5.2
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -84,6 +84,9 @@ FMI SmartSet server development related utils and files
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 
 %changelog
+* Sat May  2 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.5.2-1.fmi
+- --help
+
 * Tue Apr 28 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.4.28-3.fmi
 - smartcheckinstalled: classify each unresolved symbol against an
   index of installed libsmartmet-*.so and engine .so files, and
