@@ -1,0 +1,77 @@
+.TH SMARTMKRELEASE 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartmkrelease \- bump the spec version, commit and tag a new release
+.SH SYNOPSIS
+.B smartmkrelease
+.I "description ..."
+.SH DESCRIPTION
+.B smartmkrelease
+cuts a new release of the SmartMet package in the current directory
+by editing its
+.B .spec
+file and recording the change in git.
+.PP
+The script first locates the unique
+.BI smartmet- *.spec
+file in the current directory (exactly one is required), reads its
+current
+.B Version:
+and
+.B Release:
+lines, and decides on the next version. The new version is the
+current date encoded as
+.IB year . month . day
+where
+.I year
+is the last two digits of the current year. If that calendar date
+already matches the existing version, the
+.B Release:
+counter is incremented; otherwise it resets to
+.BR 1 .
+.PP
+The script then rewrites the spec file in place: the
+.B Version:
+and
+.B Release:
+lines are updated, and a new
+.B %changelog
+entry is prepended carrying the description supplied on the command
+line and the author's name and email taken from
+.B "git config user.name"
+and
+.BR "git config user.email" .
+A unified diff is printed for review.
+.PP
+Finally the modified spec is staged and committed with the message
+.RB \(lq "New version " \fIversion\fR-\fIrelease\fR.fmi \(rq,
+and a git tag matching
+.IB version - release
+is created on that commit.
+.PP
+A version description must be passed on the command line. The script
+refuses to run if there are uncommitted changes in the working tree
+.RB ( "git diff"
+returns non\(hyempty); commit or stash them first.
+.SH ARGUMENTS
+.TP
+.I description
+Free\(hyform changelog text describing the release. Multiple
+arguments are joined with spaces and become the body of the new
+.B %changelog
+entry.
+.SH EXAMPLES
+.PP
+.RS 4
+smartmkrelease 'Fix race in cache eviction'
+.RE
+.SH SEE ALSO
+.BR smartmktag (1),
+.BR smartbuild (1),
+.BR smartbuildrev (1),
+.BR smartbuildtmprpm (1),
+.BR git (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

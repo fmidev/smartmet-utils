@@ -33,6 +33,8 @@ clean:
 	rm -f $(CPP_PROG)
 	rm -f smartmet-$(MODULE).tar.gz
 
+mandir ?= $(PREFIX)/share/man
+
 install:
 	mkdir -p $(bindir)
 	@list='$(PROG) $(CPP_PROG)'; \
@@ -43,6 +45,13 @@ install:
 	@mkdir -p $(datadir)/smartmet/devel
 	$(INSTALL_DATA) makefile-fragments/makefile.inc $(datadir)/smartmet/devel/makefile.inc
 	$(INSTALL_DATA) makefile-fragments/makefile-abicheck.inc $(datadir)/smartmet/devel/makefile-abicheck.inc
+	mkdir -p $(mandir)/man1
+	@for page in docs/man/*.1; do \
+	  base=`basename $$page`; \
+	  echo $(INSTALL_DATA) $$page $(mandir)/man1/$$base; \
+	  $(INSTALL_DATA) $$page $(mandir)/man1/$$base; \
+	  gzip -nf $(mandir)/man1/$$base; \
+	done
 
 rpm: 	clean
 	rm -f smartmet-$(MODULE).tar.gz

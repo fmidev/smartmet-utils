@@ -1,0 +1,110 @@
+.TH SMARTCHECKINSTALLED 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartcheckinstalled \- verify the installed SmartMet package set is self\(hyconsistent
+.SH SYNOPSIS
+.B smartcheckinstalled
+.SH DESCRIPTION
+.B smartcheckinstalled
+runs
+.B "ldd \-r"
+against every installed plugin, engine, server binary and tool that
+links a
+.BI libsmartmet- *
+library, collects the unresolved symbols, and tries to attribute each
+of them to a likely source.
+.PP
+On startup the script builds an in\(hymemory index of every symbol
+exported from
+.B /usr/lib64/libsmartmet-*.so
+and from every engine
+.B .so
+under
+.B /usr/share/smartmet/engines/
+by running
+.B nm
+through
+.BR c++filt .
+For each unresolved symbol from
+.B "ldd \-r"
+output it then performs three lookup attempts: an exact match, a
+function\(hyname (parameter list ignored) match, and finally an
+enclosing class or namespace match. The first hit determines the
+classification.
+.SS Categories
+.TP
+.B engine:\fIname\fR
+The symbol is provided by an engine
+.B .so
+and will be resolved at runtime by the SmartMet server when the
+engine is loaded. This is the expected late\(hybinding case and is
+suppressed in the report. References that demangle to
+.B SmartMet::Engine::*
+are filtered out at the
+.B "ldd \-r"
+stage for the same reason.
+.TP
+.B lib:\fIname\fR (linked, signature mismatch)
+The symbol is exported by a SmartMet library that is already in the
+binary's
+.B DT_NEEDED
+list, but the exact symbol cannot be resolved. The library version
+is most likely out of step with the headers the binary was built
+against; reinstalling the providing package usually fixes it.
+.TP
+.B lib:\fIname\fR (not linked \(em add \-l\fIname\fR)
+The symbol is exported by a SmartMet library that the binary does
+.I not
+list as a dependency. The fix is to add
+.BI \-l name
+to the binary's link line and rebuild.
+.TP
+.B near match
+A function with the same name but a different parameter list, or a
+sibling symbol from the same class/namespace, exists in some
+installed SmartMet library or engine. This typically indicates a
+header/library version skew \(em rebuild against the current headers.
+.TP
+.B not found
+No installed SmartMet library defines this symbol nor anything close
+to it. The providing package is missing or stale.
+.PP
+Files under
+.B /usr/share/smartmet/python/
+are skipped because their unresolved symbols are bound at runtime
+through the embedded Python interpreter.
+.SH EXIT STATUS
+.TP
+.B 0
+All checked binaries are clean (or no SmartMet ELF files were
+installed at all).
+.TP
+.B 1
+At least one installed binary has unresolved symbols that cannot be
+explained by a late\(hybound engine.
+.TP
+.B 2
+Usage error.
+.SH EXAMPLES
+.B smartcheckinstalled
+takes no arguments:
+.PP
+.RS 4
+sudo smartcheckinstalled
+.RE
+.PP
+.BR sudo (8)
+is not strictly required for the inspection itself but is convenient
+in environments where the SmartMet packages live under root\(hyowned
+paths whose
+.B nm
+output may need elevated read access.
+.SH SEE ALSO
+.BR smartabicheck (1),
+.BR ldd (1),
+.BR nm (1),
+.BR readelf (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

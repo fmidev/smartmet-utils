@@ -1,0 +1,117 @@
+.TH SMARTPNGDIFF 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartpngdiff \- compare a PNG against a reference and report PSNR pass/fail
+.SH SYNOPSIS
+.B smartpngdiff
+.I ok_png
+.I png
+.I diff_png
+.SH DESCRIPTION
+.B smartpngdiff
+is the visual\(hyregression test driver used by SmartMet test suites.
+It compares a freshly produced PNG against a reference PNG, writes a
+contrast\(hystretched difference image, and classifies the result by
+peak signal\(hyto\(hynoise ratio.
+.PP
+The difference image is built first by piping the two inputs through
+.BR composite (1)
+with the
+.B \-compose DIFFERENCE
+operator and through
+.B convert
+(or
+.BR magick (1))
+with
+.B "\-contrast-stretch 0"
+so that even small per\(hypixel deviations become visible.
+.PP
+The PSNR is then measured by
+.BR smartimgdiff_psnr (1),
+which is searched for first next to
+.B smartpngdiff
+itself and then on the
+.BR PATH .
+The PSNR value drives the verdict:
+.RS 4
+.IP \(bu 2
+.B PSNR == infinity
+\(em images are bit\(hyidentical;
+.B OK
+is reported and the script exits with status
+.BR 0 .
+.IP \(bu 2
+.B PSNR >= 50 dB
+\(em differences below visual threshold;
+.B OK
+with the PSNR value, exit
+.BR 0 .
+.IP \(bu 2
+.B "20 dB <= PSNR < 50 dB"
+\(em
+.B WARNING
+with the PSNR value, exit
+.BR 0 .
+.IP \(bu 2
+.B PSNR < 20 dB
+\(em
+.B FAIL
+with the PSNR value, exit
+.BR 100 .
+.IP \(bu 2
+PSNR could not be parsed (corrupt image, dimension mismatch, etc.)
+\(em
+.BR FAIL ,
+exit
+.BR 100 .
+.RE
+.PP
+If the
+.I png
+input does not exist the script prints
+.B "*** FAILED: '...' not created"
+and exits with status
+.BR 255 .
+.PP
+ANSI colour output is suppressed when the
+.B CI
+environment variable is set, so test logs in CI remain plain text.
+.SH ARGUMENTS
+.TP
+.I ok_png
+Reference PNG (the expected image).
+.TP
+.I png
+Actual PNG produced by the test under inspection.
+.TP
+.I diff_png
+Path to write the contrast\(hystretched difference image.
+.SH EXIT STATUS
+.TP
+.B 0
+PSNR in the OK or WARNING range, or images identical.
+.TP
+.B 100
+PSNR below threshold or comparison failed.
+.TP
+.B 255
+Actual PNG file is missing.
+.SH EXAMPLES
+.PP
+.RS 4
+smartpngdiff results_ok/contour.png results/contour.png \\
+.br
+.RS 0
+.RE
+.RS 4
+results_diff/contour.png
+.RE
+.RE
+.SH SEE ALSO
+.BR smartimgdiff_psnr (1),
+.BR composite (1),
+.BR convert (1),
+.BR magick (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

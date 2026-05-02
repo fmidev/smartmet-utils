@@ -1,0 +1,105 @@
+.TH SMARTMKCICONFIG 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartmkciconfig \- regenerate the SmartMet CircleCI configuration
+.SH SYNOPSIS
+.B smartmkciconfig
+.SH DESCRIPTION
+.B smartmkciconfig
+generates
+.B .circleci/config.yml
+from a built\(hyin template, parameterised by the list of RHEL
+versions to target. It is run inside any SmartMet repository to keep
+each project's CI configuration in lockstep with the rest of the
+ecosystem.
+.PP
+The list of RHEL versions is read from
+.B ~/.ci-rhel-versions
+(whitespace\(hyseparated, single line). When that file is absent the
+script defaults to
+.BR 8 .
+For each version
+.IR N ,
+three jobs are emitted:
+.RS 4
+.IP \(bu 2
+.BI build-rhel N
+\(em runs
+.B "ci-build deps"
+and
+.B "ci-build rpm"
+in
+.B fmidev/smartmet-cibase\-\fIN\fR:latest
+and persists the resulting RPMs.
+.IP \(bu 2
+.BI test-rhel N
+\(em installs the built RPMs and runs
+.B "ci-build testprep"
+followed by
+.BR "ci-build test" .
+Skipped when
+.B .circleci/disable-tests-in-ci
+exists.
+.IP \(bu 2
+.BI upload-rhel N
+\(em syncs the artefacts to S3
+.RB ( fmi-smartmet-cicd-beta ).
+.RE
+.PP
+A
+.BI unit-test-rhel N
+job is added when
+.B .circleci/include-unit-test-step
+exists (currently used by the WFS plugin).
+.PP
+The new YAML is written to
+.B .circleci/config.yml.new
+first. If it is byte\(hyidentical to the existing
+.BR config.yml ,
+the new file is removed and the script reports
+.B "No changed detected."
+Otherwise the old config is renamed to
+.B .circleci/config.yml~
+as a backup and the new one takes its place.
+.PP
+.B smartmkciconfig
+exits with status
+.B 1
+when no
+.B .circleci/config.yml
+exists in the current directory; the script does not bootstrap that
+file from scratch.
+.SH FILES
+.TP
+.B ~/.ci-rhel-versions
+Whitespace\(hyseparated list of RHEL major versions to generate jobs
+for.
+.TP
+.B .circleci/config.yml
+The generated CircleCI configuration.
+.TP
+.B .circleci/config.yml~
+Backup of the previous configuration.
+.TP
+.B .circleci/disable-tests-in-ci
+Marker file: when present, no
+.B test-rhel\fIN\fR
+jobs are emitted.
+.TP
+.B .circleci/include-unit-test-step
+Marker file: when present, an extra
+.B unit-test-rhel\fIN\fR
+job is emitted.
+.SH EXAMPLES
+.PP
+.RS 4
+echo '8 10' > ~/.ci\-rhel\-versions
+.br
+smartmkciconfig
+.RE
+.SH SEE ALSO
+.BR smartbuild (1),
+.BR make (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

@@ -1,0 +1,67 @@
+.TH SMARTBUILDREV 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartbuildrev \- build an RPM from a specific git revision
+.SH SYNOPSIS
+.B smartbuildrev
+.RI [ revision " [" directory ]]
+.SH DESCRIPTION
+.B smartbuildrev
+exports a single git revision into a temporary directory using
+.BR "git archive" ,
+unpacks it, and runs
+.B "make rpm"
+on the result. The working tree is left untouched; the temporary
+build directory is removed automatically when the script exits.
+.PP
+This is the standard way to rebuild an RPM matching an existing tag
+or commit (for example, to reproduce a previously released package
+locally) without disturbing the developer's checkout.
+.SH ARGUMENTS
+.TP
+.I revision
+Git revision to build (tag, branch or commit SHA). Defaults to
+.BR HEAD .
+.TP
+.I directory
+Source directory containing the git repository to read from. Defaults
+to the current directory; the script invokes
+.BR "git -C \fIdirectory\fR archive"
+when supplied. Note that
+.B revision
+must be given when
+.I directory
+is given.
+.SH EXAMPLES
+Build an RPM of the currently checked\(hyout revision in the current
+directory:
+.PP
+.RS 4
+smartbuildrev
+.RE
+.PP
+Build an RPM of tag
+.BR 26.4.28-3 :
+.PP
+.RS 4
+smartbuildrev 26.4.28\-3
+.RE
+.PP
+Build an RPM of tag
+.B FOO
+from a sibling working tree:
+.PP
+.RS 4
+smartbuildrev FOO ../other\-checkout
+.RE
+.SH SEE ALSO
+.BR smartbuildtmprpm (1),
+.BR smartbuild (1),
+.BR smartmkrelease (1),
+.BR smartmktag (1),
+.BR git (1),
+.BR make (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

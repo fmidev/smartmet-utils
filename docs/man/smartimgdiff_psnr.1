@@ -1,0 +1,69 @@
+.TH SMARTIMGDIFF_PSNR 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartimgdiff_psnr \- compare two images and print the PSNR
+.SH SYNOPSIS
+.B smartimgdiff_psnr
+.I image1
+.I image2
+.RI [ output ]
+.SH DESCRIPTION
+.B smartimgdiff_psnr
+loads two images via ImageMagick (Magick++), confirms that they have
+identical width, height and bit depth, computes the mean\(hysquared
+error between them, and prints the corresponding peak signal\(hyto\(hynoise
+ratio in decibels:
+.PP
+.RS 4
+.B PSNR:
+.I value
+.B dB
+.RE
+.PP
+Identical images print
+.B PSNR: inf dB
+(infinite ratio); larger numbers indicate more similar images. The
+script is the actual measurement engine used by
+.BR smartpngdiff (1).
+.PP
+When the optional
+.I output
+argument is given and the images differ, a difference image is
+written to that path. The difference is computed with the
+.B Difference
+composite operator and contrast\(hystretched to make small pixel
+deltas visible.
+.PP
+A mismatch in dimensions or bit depth is reported on standard error
+and the script returns a negative PSNR value, after which it prints
+.B "Failed to calculate PSNR."
+to standard output.
+.SH ARGUMENTS
+.TP
+.I image1
+First image to compare.
+.TP
+.I image2
+Second image to compare.
+.TP
+.I output
+Optional output path for the contrast\(hystretched difference image.
+.SH EXAMPLES
+Compare two PNG files:
+.PP
+.RS 4
+smartimgdiff_psnr expected.png actual.png
+.RE
+.PP
+Compare and write a difference image:
+.PP
+.RS 4
+smartimgdiff_psnr expected.png actual.png diff.png
+.RE
+.SH SEE ALSO
+.BR smartpngdiff (1),
+.BR compare (1),
+.BR composite (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

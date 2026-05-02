@@ -1,0 +1,75 @@
+.TH SMARTCXXCHECK 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartcxxcheck \- detect C++ compiler vendor, major version and standard
+.SH SYNOPSIS
+.B smartcxxcheck
+.RI [ compiler ]
+.SH DESCRIPTION
+.B smartcxxcheck
+identifies the C++ compiler that the build will use and prints a
+single space\(hyseparated line:
+.PP
+.RS 4
+.IR compiler-id " " major-version " " cxx-std
+.RE
+.PP
+where
+.I compiler-id
+is
+.B g++
+or
+.BR clang++ ,
+.I major-version
+is the leading digit reported by the compiler, and
+.I cxx-std
+is one of
+.BR c++17 " or " c++20 .
+The output is consumed by the shared SmartMet
+.B makefile.inc
+to pick the C++ standard flag and to gate compiler\(hyspecific warnings
+and workarounds.
+.PP
+Detection works by running
+.B "\fIcompiler\fR \-x c++ \-E \-dM /dev/null"
+and inspecting the predefined preprocessor macros
+.RB ( __clang_major__ ", " __clang_version__ ", " __GNUC__ ", "
+.BR __GNUC_MINOR__ ", " __cplusplus ).
+For Clang, the matching system
+.B /usr/bin/g++
+is also probed to determine the C++ standard, since the SmartMet
+build sticks to whatever standard the system GCC supports
+.RB ( c++20
+when GCC is 11 or newer,
+.B c++17
+when 8\(en10).
+.PP
+If detection fails for any reason, the script falls back to printing
+a safe default of
+.BI compiler " 0 c++17"
+followed by a normal line, so callers always get a parsable result.
+.SH ARGUMENTS
+.TP
+.I compiler
+Name or absolute path of the compiler to probe. Defaults to
+.BR g++ .
+.SH EXAMPLES
+Detect the system default:
+.PP
+.RS 4
+smartcxxcheck
+.RE
+.PP
+Detect a specific compiler:
+.PP
+.RS 4
+smartcxxcheck /usr/bin/clang++
+.RE
+.SH SEE ALSO
+.BR smartbuildcfg (1),
+.BR g++ (1),
+.BR clang++ (1),
+.BR make (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

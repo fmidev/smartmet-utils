@@ -1,0 +1,64 @@
+.TH SMARTBUILDTMPRPM 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartbuildtmprpm \- build an RPM from a git revision with a temporary version bump
+.SH SYNOPSIS
+.B smartbuildtmprpm
+.RI [ revision " [" directory ]]
+.SH DESCRIPTION
+.B smartbuildtmprpm
+clones the source git repository into a temporary working directory,
+checks out the requested revision, runs
+.BR smartmkrelease (1)
+to create a fresh local version commit
+.RB ( "Test version (GIT revision \fIsha\fR)" )
+in that temporary tree, and finally builds the RPM with
+.BR "make rpm" .
+The local commit and tag exist only in the disposable build tree; the
+caller's working copy is not modified, and the temporary directory is
+removed when the script exits.
+.PP
+The new version produced by
+.BR smartmkrelease (1)
+strictly increases over the previous release, so the resulting RPM
+can be uploaded to a staging repository without colliding with any
+existing tagged release. This is the standard way to produce a
+preview or staging build of a tip\(hyof\(hybranch revision.
+.PP
+.B smartbuildrev
+.RB ( smartbuildrev (1))
+is the equivalent script
+.I without
+the version bump and is preferred for reproducing an already\(hytagged
+release.
+.SH ARGUMENTS
+.TP
+.I revision
+Git revision to build (tag, branch or commit SHA). Defaults to
+.BR HEAD .
+.TP
+.I directory
+Source directory containing the git repository to clone from.
+Defaults to the current directory.
+.SH EXAMPLES
+Staging build of the current checkout:
+.PP
+.RS 4
+smartbuildtmprpm
+.RE
+.PP
+Staging build of an explicit branch:
+.PP
+.RS 4
+smartbuildtmprpm origin/devel
+.RE
+.SH SEE ALSO
+.BR smartbuildrev (1),
+.BR smartbuild (1),
+.BR smartmkrelease (1),
+.BR git (1),
+.BR make (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

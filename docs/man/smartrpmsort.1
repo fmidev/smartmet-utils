@@ -1,0 +1,69 @@
+.TH SMARTRPMSORT 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartrpmsort \- keep only the newest RPM of each package, archive the rest
+.SH SYNOPSIS
+.B smartrpmsort
+.I directory
+.RI [ subdirectory ]
+.SH DESCRIPTION
+.B smartrpmsort
+scans
+.I directory
+for files matching
+.BI * - version - release . arch .rpm
+.RB ( x86_64 " or " noarch ),
+groups them by package name, picks the highest version\(hyrelease pair
+in each group as the keeper, and moves all older copies into a
+subdirectory of
+.IR directory .
+.PP
+The default subdirectory name is
+.BR archive ;
+a different name may be supplied as the second argument. The
+subdirectory is created on demand and is left empty if no archiving
+is necessary.
+.PP
+Sorting is numeric and dotted: the version field is split on
+.RB \(lq . \(rq,
+each component is zero\(hypadded to five digits, and up to five
+components are concatenated to form the sort key.
+Filenames that do not parse against the expected RPM naming pattern
+are reported and skipped.
+.PP
+Exit status is
+.B 0
+on success and
+.B 1
+if any
+.BR rename (2)
+operation failed.
+.SH ARGUMENTS
+.TP
+.I directory
+Directory containing the RPM files to sort.
+.TP
+.I subdirectory
+Name of the archive subdirectory. Defaults to
+.BR archive .
+.SH EXAMPLES
+Keep only the newest of each
+.B smartmet-*
+RPM in a download directory, moving older ones into
+.BR archive/ :
+.PP
+.RS 4
+smartrpmsort ~/Downloads/smartmet
+.RE
+.PP
+Use a custom archive name:
+.PP
+.RS 4
+smartrpmsort /var/cache/smartmet old
+.RE
+.SH SEE ALSO
+.BR smartbuild (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

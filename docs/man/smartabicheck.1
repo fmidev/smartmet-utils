@@ -1,0 +1,145 @@
+.TH SMARTABICHECK 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartabicheck \- quick ABI sanity check for a SmartMet library
+.SH SYNOPSIS
+.B smartabicheck
+.I name
+.I newlib
+.RB [ \-\-deep ]
+.SH DESCRIPTION
+.B smartabicheck
+compares a freshly\(hybuilt SmartMet library against the version
+currently installed from the corresponding
+.B smartmet-library-\fIname\fR
+RPM, then asks whether each installed consumer (plugin, engine, server
+binary, tool) would still link against the new build.
+.PP
+The check runs in three layers. The first two are cheap and always
+performed. The third is opt\(hyin and requires
+.BR libabigail (1).
+.SS Cheap layer
+For every installed consumer that lists
+.BI libsmartmet- name
+in its
+.B DT_NEEDED
+entries, the script runs
+.B "ldd \-r"
+twice \(em once with the old library on the system loader path and
+once with the new library substituted in via
+.BR LD_LIBRARY_PATH .
+Symbols that become unresolved only with the new library are reported
+as breaks; pre\(hyexisting unresolved symbols cancel out so unrelated
+stale libraries on the host do not produce false positives. References
+to
+.B SmartMet::Engine::
+symbols are filtered out because those are bound at runtime by the
+SmartMet server.
+.PP
+The cheap layer additionally diffs the exported vtable, typeinfo and
+data\(hyobject symbol sizes (those starting with
+.BR _ZTV ", " _ZTI ", " _ZTS
+or with
+.B nm
+classes
+.BR D ", " B ", " R ", " G )
+between old and new libraries. Removed entries and size changes are
+reported as warnings, since a vtable layout change can break consumers
+silently at runtime even when they still link.
+.PP
+The cheap layer detects:
+.RS 4
+.IP \(bu 2
+removed, renamed or signature\(hychanged exported symbols
+(link\(hytime breakage),
+.IP \(bu 2
+vtable size changes (silent virtual\(hydispatch breakage),
+.IP \(bu 2
+exported data size changes (silent global\(hylayout breakage).
+.RE
+.PP
+The cheap layer does
+.B not
+detect:
+.RS 4
+.IP \(bu 2
+private struct members added or reordered,
+.IP \(bu 2
+inline function body changes,
+.IP \(bu 2
+enum value renumbering.
+.RE
+.SS Deep layer
+With
+.BR \-\-deep ,
+.B abicompat
+from libabigail is run for every consumer with the old and new
+libraries, providing full type\(hyaware verification including the
+cases the cheap layer cannot see. If
+.B abicompat
+is not installed, the script exits with status 2.
+.SH ARGUMENTS
+.TP
+.I name
+Bare library name without the
+.B libsmartmet-
+prefix and without the
+.B .so
+suffix; for example
+.BR macgyver ", " spine ", " gis .
+The corresponding installed package is
+.BI smartmet-library- name \fR.
+.TP
+.I newlib
+Path to the freshly\(hybuilt
+.BI libsmartmet- name .so
+shared object to test.
+.TP
+.B \-\-deep
+Run the libabigail
+.B abicompat
+check after the cheap layer.
+.SH EXIT STATUS
+.TP
+.B 0
+Library is ABI\(hycompatible (no breaks, no suspect signatures), or
+the package was not installed and there was nothing to compare.
+.TP
+.B 1
+At least one consumer would fail to link, or the deep check rejected
+the new library.
+.TP
+.B 2
+Usage error or missing dependency (for example
+.B \-\-deep
+without
+.BR abicompat ).
+.SH EXAMPLES
+Quick check of a freshly\(hybuilt macgyver:
+.PP
+.RS 4
+smartabicheck macgyver libsmartmet\-macgyver.so
+.RE
+.PP
+Full type\(hyaware check:
+.PP
+.RS 4
+smartabicheck macgyver libsmartmet\-macgyver.so \-\-deep
+.RE
+.PP
+.B smartabicheck
+is normally invoked indirectly via the
+.B abicheck
+and
+.B abicheck-deep
+targets in
+.BR makefile.inc .
+.SH SEE ALSO
+.BR smartcheckinstalled (1),
+.BR make (1),
+.BR ldd (1),
+.BR nm (1),
+.BR readelf (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

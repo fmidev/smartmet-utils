@@ -1,0 +1,122 @@
+.TH SMARTBUILDCFG 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartbuildcfg \- query the SmartMet build configuration
+.SH SYNOPSIS
+.B smartbuildcfg
+.B \-\-prefix
+.br
+.B smartbuildcfg
+.B \-\-cflags
+.RI [ requires ...]
+.br
+.B smartbuildcfg
+.B \-\-libs
+.RI [ requires ...]
+.SH DESCRIPTION
+.B smartbuildcfg
+is a small
+.BR pkg-config (1)\(hystyle
+helper used by the shared SmartMet
+.B makefile.inc
+to locate the install prefix and to translate the
+.B REQUIRES
+list of a project into compiler and linker flags.
+.PP
+With
+.BR \-\-prefix ,
+the install prefix is derived from the script's own absolute path
+(the parent of the
+.B bin
+directory in which it lives) and printed to standard output. The
+makefile fragment uses this to find the SmartMet
+.B share/smartmet/devel
+data alongside the script.
+.PP
+With
+.B \-\-cflags
+or
+.BR \-\-libs ,
+each remaining positional argument is a dependency name as listed in a
+project's
+.B REQUIRES
+makefile variable. Recognised names include
+.BR cairo ", " configpp ", " ctpp2 ", " fmt ", " gdal ", " geos ", "
+.BR icu-i18n ", " jsoncpp ", " librsvg ", " mariadb " and " xerces-c .
+For libraries that ship in versioned install prefixes
+.RB ( gdal ", " geos ", " configpp ),
+.B smartbuildcfg
+probes well\(hyknown locations such as
+.IR /usr/gdal38 ,
+.I /usr/geos312
+or
+.I /usr/libconfig17
+in turn before falling back to the system path or to
+.BR pkg-config .
+For
+.B boost169
+on RHEL 7\(hystyle hosts the appropriate
+.B \-isystem
+and
+.B \-L
+flags are added when
+.I /usr/include/boost169
+exists. Recognised
+.BR pkg-config (1)
+backed names are dispatched through pkg\(hyconfig in a single batch.
+.PP
+The compiler is also probed via its
+.B \-\-version
+output to add a
+.B \-std=c++17
+flag (or
+.B c++11
+on legacy GCC 5). The
+.B CXX
+environment variable selects the compiler;
+.B g++
+is used if it is not set.
+.PP
+Unrecognised dependency names produce no output (they are intended to
+be handled by the makefile's own dispatch).
+.SH OPTIONS
+.TP
+.B \-\-prefix
+Print the install prefix (e.g.\&
+.BR /usr ).
+.TP
+.B \-\-cflags
+Print the compile flags for the requested dependencies.
+.TP
+.B \-\-libs
+Print the link flags for the requested dependencies.
+.SH EXAMPLES
+Find the install prefix:
+.PP
+.RS 4
+smartbuildcfg \-\-prefix
+.RE
+.PP
+Compile and link flags for a project that requires fmt, jsoncpp and
+GDAL:
+.PP
+.RS 4
+smartbuildcfg \-\-cflags fmt jsoncpp gdal
+.br
+smartbuildcfg \-\-libs   fmt jsoncpp gdal
+.RE
+.PP
+.B smartbuildcfg
+is invoked from
+.B makefile.inc
+roughly as:
+.PP
+.RS 4
+include $(shell smartbuildcfg \-\-prefix)/share/smartmet/devel/makefile.inc
+.RE
+.SH SEE ALSO
+.BR pkg-config (1),
+.BR make (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

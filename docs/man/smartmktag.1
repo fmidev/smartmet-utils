@@ -1,0 +1,50 @@
+.TH SMARTMKTAG 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartmktag \- tag the commit that introduced the current spec version
+.SH SYNOPSIS
+.B smartmktag
+.SH DESCRIPTION
+.B smartmktag
+finds the unique
+.BI smartmet- *.spec
+file in the current directory, reads its
+.B Version:
+and
+.B Release:
+fields, and walks back through the file's git history to identify the
+oldest commit that already declares this exact
+.IB version - release
+pair (that is, the commit at which the current version was first
+introduced). If no git tag of that name exists yet, the script
+creates one pointing at that commit; otherwise it reports that the
+tag is already present and exits without modifying anything.
+.PP
+The intended use is:
+.BR smartmkrelease (1)
+bumps the version, commits the change and creates the tag in one
+step. If a release commit was made or pulled without its
+corresponding tag (for example by a co\(hymaintainer who edited the
+spec by hand),
+.B smartmktag
+recovers by tagging the right historical commit retroactively.
+.PP
+Exactly one
+.B smartmet-*.spec
+file must be present in the current directory; the script aborts
+otherwise.
+.SH EXAMPLES
+.PP
+.RS 4
+cd ~/hub/macgyver
+.br
+smartmktag
+.RE
+.SH SEE ALSO
+.BR smartmkrelease (1),
+.BR smartbuild (1),
+.BR smartbuildrev (1),
+.BR git (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

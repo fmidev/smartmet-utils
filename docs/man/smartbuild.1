@@ -1,0 +1,238 @@
+.TH SMARTBUILD 1 "2026-05-02" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartbuild \- build the SmartMet package set from git in dependency order
+.SH SYNOPSIS
+.B smartbuild
+.RI [ options ]
+.SH DESCRIPTION
+.B smartbuild
+orchestrates building, testing and installing the full set of
+.BI smartmet- *
+packages directly from their GitHub source repositories. It maintains
+a workspace of bare git mirrors under
+.B workspace/mirror/
+inside the current directory, parses each project's
+.B .spec
+file to discover SmartMet dependencies, and walks them in topological
+order. For each module it can either build and install via
+.B make install
+(developer mode) or build an RPM and install it with
+.BR dnf / yum
+(release mode).
+.PP
+A workspace must exist before the first build; pass
+.B \-\-create-workspace
+once to create
+.BR workspace/mirror/ ,
+.B workspace/log/
+and
+.BR workspace/export/ .
+About 1.5 GB of disk space is required for the bare clones plus
+additional space for build artefacts.
+.PP
+For each module, when building RPMs,
+.B smartbuild
+checks whether a release of the same version is already available in
+the configured SmartMet RPM repositories and installs that instead of
+rebuilding (skipping unnecessary work). With
+.BR \-\-test-rpms ,
+the current branch HEAD is built unconditionally with a local
+.BR smartmkrelease (1)\(hystyle
+version bump so the resulting RPM does not collide with any tagged
+release; an embedded GIT SHA in the changelog lets
+.B smartbuild
+recognise an already\(hybuilt cached RPM in the export directory and
+install it without rebuilding.
+.PP
+.BR sudo (8)
+is required for package install steps, so the invoking user must have
+the appropriate privileges.
+.SH OPTIONS
+.TP
+.B \-\-help
+Print built\(hyin help and exit.
+.TP
+.BI \-\-config " file"
+Read module configuration from the given JSON file (sections
+.BR modules ", " ignore ", " recursive ).
+.TP
+.B \-\-default-config
+Use the built\(hyin default module list (the public smartmet\-* set).
+Mutually exclusive with
+.BR \-\-config .
+.TP
+.B \-\-create-workspace
+Create
+.B workspace/mirror/
+under the current directory. Required at first run; the explicit flag
+exists so accidental invocation from a wrong directory does not start
+downloading gigabytes of source.
+.TP
+.B \-\-release-rpms
+Build RPMs of the latest released versions, skipping modules whose
+release RPM is already present in the configured SmartMet repos.
+.TP
+.B \-\-test-rpms
+Build test RPMs from the current branch HEAD. A local
+.BR smartmkrelease (1)\(hystyle
+version bump is created in the temporary build tree so no release tag
+is required and the availability check is skipped. Cached RPMs whose
+changelog matches the current commit SHA are reused.
+.TP
+.B \-\-release
+Build, test and install the latest released versions via
+.BR "make install" .
+.TP
+.B \-\-current
+Build, test and install the current HEAD of the configured branch
+(see
+.BR \-\-branch ).
+.TP
+.BI \-\-branch " branches"
+Colon\(hyseparated branch list to try in order; for example
+.B devel:master
+uses
+.B devel
+when present and falls back to
+.BR master .
+.TP
+.B \-\-recursive
+Walk and build SmartMet dependencies recursively before each module.
+.TP
+.B \-\-update
+Only update local git mirrors, do not build.
+.TP
+.B \-\-local
+Do not contact remote git; reuse what the mirrors already have.
+.TP
+.B \-\-dump-config
+Print the resolved configuration as JSON and exit (no build, no git
+update).
+.TP
+.B \-\-dump-available
+Print package versions found in the SmartMet RPM repositories and
+exit.
+.TP
+.BI \-\-add-module " name[,name...]"
+Add one or more SmartMet modules to the configuration. May be given
+multiple times. A repository name different from the module name may
+be supplied as
+.IB name ( repo ) \fR.
+.TP
+.BI \-\-remove-module " name[,name...]"
+Remove modules from the configuration.
+.TP
+.BI \-\-add-ignore " name[,name...]"
+Add a SmartMet module name to the ignore list (will not be built even
+if listed as a dependency).
+.TP
+.BI \-\-remove-ignore " name[,name...]"
+Remove a name from the ignore list.
+.TP
+.BI \-\-set-private " name[,name...]"
+.TQ
+.BI \-\-clear-private " name[,name...]"
+Mark a module as private or public. Affects the export directory
+under
+.BR workspace/export/ .
+.TP
+.B \-\-asan
+Pass
+.B ASAN=yes
+to make (AddressSanitizer build).
+.TP
+.B \-\-tsan
+Pass
+.B TSAN=yes
+to make (ThreadSanitizer build). Mutually exclusive with
+.BR \-\-asan .
+.TP
+.B \-\-clang
+Pass
+.B CXX=clang++
+to make.
+.TP
+.B \-\-builddep
+Run
+.B "dnf builddep"
+(or
+.BR yum-builddep )
+on each spec before building. Implied by
+.BR \-\-release-rpms .
+.TP
+.B \-\-https
+Use
+.B https://github.com/fmidev
+instead of the default
+.B git@github.com:fmidev
+URL prefix.
+.TP
+.B \-\-ignore-installed
+Build packages newer than what is installed even when the SmartMet
+repository already provides the same version.
+.TP
+.B \-\-separate-logs
+Write each module's build, test and install output to a separate file
+under
+.BR workspace/log/ .
+.TP
+.B \-\-verbose
+Dump settings and module structures to standard output.
+.TP
+.BI \-\-docker= version
+Re\(hyrun the build inside a Docker container based on the matching
+.B fmidev/smartmet-cibase\-\fIversion\fR
+image (RHEL versions
+.BR 8 ", " 9 ", " 10 ).
+The current working directory and host SSH keys are bind\(hymounted,
+host UID/GID is preserved, and
+.B \-\-builddep
+is added automatically. A throw\(hyaway image with passwordless
+.BR sudo (8)
+and the script's own
+.B Requires:
+packages installed is built first and removed on exit.
+.SH EXAMPLES
+First\(hytime workspace setup:
+.PP
+.RS 4
+smartbuild \-\-default\-config \-\-create\-workspace
+.RE
+.PP
+Build released RPMs of the default module set, recursively:
+.PP
+.RS 4
+smartbuild \-\-default\-config \-\-release\-rpms \-\-recursive
+.RE
+.PP
+Build a test RPM of the current
+.B devel
+branch of one plugin:
+.PP
+.RS 4
+smartbuild \-\-default\-config \-\-test\-rpms \-\-branch devel:master \\
+.br
+.RS 0
+.RE
+.RS 4
+\-\-add\-module smartmet\-plugin\-timeseries
+.RE
+.RE
+.PP
+Reproduce a RHEL 9 release build inside Docker:
+.PP
+.RS 4
+smartbuild \-\-default\-config \-\-release\-rpms \-\-docker=9
+.RE
+.SH SEE ALSO
+.BR smartbuildrev (1),
+.BR smartbuildtmprpm (1),
+.BR smartmkrelease (1),
+.BR smartmktag (1),
+.BR smartrpmsort (1),
+.BR make (1),
+.BR rpm (1)
+.SH AUTHOR
+Finnish Meteorological Institute
+.PP
+Report issues at <https://github.com/fmidev/smartmet-utils/issues>.

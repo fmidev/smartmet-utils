@@ -82,6 +82,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartimgdiff_psnr
 %{_datadir}/smartmet/devel/makefile.inc
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
+%{_mandir}/man1/*.1.gz
 
 %changelog
 * Sat May  2 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.5.2-1.fmi
