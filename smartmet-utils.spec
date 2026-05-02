@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.5.2
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -85,6 +85,11 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Sat May  2 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.5.2-2.fmi
+- smartbuildcfg: fix swapped if/else branches that caused the CXX
+  environment variable to be ignored. The script now uses $CXX when
+  set and falls back to g++ otherwise, as originally intended.
+
 * Sat May  2 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.5.2-1.fmi
 - --help
 

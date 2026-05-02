@@ -23,12 +23,7 @@ GetOptions(
     , "libs" => \$show_libs
     );
 
-my $CXX;
-if (defined $ENV{CXX}) {
-    $CXX = "g++";
-} else {
-    $CXX = $ENV{CXX};
-}
+my $CXX = $ENV{CXX} // "g++";
 
 if ($show_prefix) {
     my  $prefix = GetPrefix();
