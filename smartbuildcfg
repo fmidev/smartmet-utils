@@ -48,9 +48,15 @@ if ($show_prefix) {
 sub GetPrefix()
 {
     my $script_path = abs_path($0);
-    my $result = $script_path;
-    $result =~ s|/[^/]+/[^/]+$||;
-    return $result;
+    # When installed, the script lives at $prefix/bin/smartbuildcfg or
+    # $prefix/sbin/smartbuildcfg, so strip the last two components.
+    # When invoked from a source tree (e.g. smartbuild prepends its own
+    # directory to PATH inside Docker), the parent is not a bin dir and
+    # we fall back to /usr to find the actually-installed makefile.inc.
+    if ($script_path =~ m|^(.+)/s?bin/[^/]+$|) {
+        return $1;
+    }
+    return '/usr';
 }
 
 sub GetCompilerVersionInfo($)
