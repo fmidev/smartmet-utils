@@ -49,7 +49,10 @@ use Data::Dumper;
     "smartmet-tools-grid"                   => {},
     "smartmet-textgenapps"                  => {},
     "smartmet-cropper"                      => {},
-    "smartmet-press"                        => {}
+    "smartmet-press"                        => {},
+    "smartmet-monitor"                      => {},
+    "smartmet-qdless"                       => {},
+    "smartmet-gdal-querydata-driver"        => {}
     );
 
 %::default_ignore = (
