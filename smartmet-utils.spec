@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.5.11
+Version: 26.5.19
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -85,6 +85,9 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Tue May 19 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.19-1.fmi
+- smartbuild: update default package list
+
 * Mon May 11 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.5.11-1.fmi
 - Updated smartbuild packages
 
