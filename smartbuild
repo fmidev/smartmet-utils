@@ -612,7 +612,10 @@ sub read_spec_version_from_file($)
     return "${version}-${release}";
 }
 
-sub get_spec_file($)
+#   Return the sorted list of *.spec files at the top of the given mirror
+#   directory's branch. Empty list means the repository has no spec files
+#   and should be ignored.
+sub get_spec_files($)
 {
     my $dir = shift;
     my $branch = locate_branch($dir);
@@ -622,14 +625,27 @@ sub get_spec_file($)
     my @spec_files;
     while (<$input>) {
         chomp;
-        if (m/\.spec$/) {
+        if (m/^[^\/]+\.spec$/) {
             push (@spec_files, $_);
         }
     }
     close $input;
+    return sort @spec_files;
+}
 
-    scalar @spec_files == 1 or die "Exactly one SPEC file expected - got (".join(" ", @spec_files).")";
-    return $spec_files[0];
+#   Pick the primary spec file for version tracking. Prefers a spec named
+#   after the module (smartmet-X.spec for module smartmet-X), otherwise
+#   returns the first spec alphabetically. Returns undef if @$specs is empty.
+sub get_primary_spec_file($$)
+{
+    my $module = get_module_name(shift);
+    my $specs_ref = shift;
+    return undef unless @$specs_ref;
+    foreach my $s (@$specs_ref) {
+        (my $base = $s) =~ s/\.spec$//;
+        return $s if $base eq $module;
+    }
+    return $specs_ref->[0];
 }
 
 sub get_revision_and_version
@@ -643,20 +659,30 @@ sub get_revision_and_version
     }
 
     my $branch = locate_branch($dir);
-    my $fn = get_spec_file($dir);
+
+    my $module = basename($dir);
+    $module =~ s/\.git$//;
+
+    my @specs = get_spec_files($dir);
+    if (not @specs) {
+        # No spec files in repo: caller treats this as "ignore module".
+        return (undef, undef, undef, []);
+    }
+
+    my $fn = get_primary_spec_file($module, \@specs);
     open($input, "git -C $dir log -$count $branch -- $fn |")
 	or die "Failed to get git history of $fn: $!";
 
     my $version = extract_spec_version($dir, $fn, $branch);
 
     if (not $::settings{release_rpms} and not $::settings{release}) {
-        return ($branch, $version, $fn);
+        return ($branch, $version, $fn, \@specs);
     } else {
         if (defined($version)) {
             # Check wheter GIT tag with name equal to version is present and use it if found
             if (system("git -C $dir describe --tags tags/$version") == 0) {
                 print "Git tag $version found. Using it as revision\n";
-                return ("tags/$version", $version, $fn);
+                return ("tags/$version", $version, $fn, \@specs);
             }
 
             open($input, "git -C $dir log -$count $branch $fn |")
@@ -669,7 +695,7 @@ sub get_revision_and_version
                     my $curr_rev = $_;
                     my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
                     if (defined($curr_ver) and ($curr_ver ne $version)) {
-                        return ($curr_rev, $version, $fn);
+                        return ($curr_rev, $version, $fn, \@specs);
                     }
                 }
             }
@@ -746,68 +772,72 @@ sub register_subpackages_for_module($)
 
     my $mirror_dir = ensure_mirror_present($module);
     my $branch = locate_branch($mirror_dir);
-    my $spec  = get_spec_file($mirror_dir);
+    my @specs = get_spec_files($mirror_dir);
+    return unless @specs;  # No spec files: nothing to register.
 
-    my $content;
-    my $cmd = "git -C $mirror_dir show $branch:$spec";
-    open(my $fh, "$cmd |") or die "Failed: $cmd: $!";
-    { local $/; $content = <$fh>; }
-    close $fh;
+    foreach my $spec (@specs) {
+        my $content;
+        my $cmd = "git -C $mirror_dir show $branch:$spec";
+        open(my $fh, "$cmd |") or die "Failed: $cmd: $!";
+        { local $/; $content = <$fh>; }
+        close $fh;
 
-    my @pkgs = extract_packages_from_spec_content($content);
-    foreach my $pkg (@pkgs) {
-        $::subpackage_map{$pkg} = $module;
+        my @pkgs = extract_packages_from_spec_content($content);
+        foreach my $pkg (@pkgs) {
+            $::subpackage_map{$pkg} = $module;
+        }
     }
 }
 
 sub extract_requires($$$)
 {
     my $module = get_module_name(shift);
-    my $spec = shift;
+    my $specs_ref = shift;
     my $revision = shift;
 
     my $mirror = get_mirror_dir($module);
-
-    my $input;
-    my $cmd = "git -C $mirror show $revision:$spec";
-    open($input, "$cmd |") or die "Failed: $cmd\n";
 
     my @requires;
     my @build_requires;
     my @test_requires;
 
-    while (<$input>) {
-        if (m/\s*?(Requires|BuildRequires|#TestRequires):\s*(.*)$/) {
-            my $type = $1;
-            my $data = $2;
-            $data =~ s/[\s=><].*$//;
-            # Resolve subpackage names (smartmet-X-devel, smartmet-X-libs, etc.)
-            # to the main module that builds them, using the map populated from
-            # spec files. Fall back to stripping -devel for transitive modules
-            # whose spec has not yet been parsed.
-            if (defined $::subpackage_map{$data}) {
-                $data = $::subpackage_map{$data};
-            } else {
-                $data =~ s/-devel$//;
-            }
-            next if $data eq $module;
-            if ($data =~ m/^smartmet-/ or defined($::config->{modules}->{$data})) {
-                if (not defined $::default_ignore{$data}) {
-                    if ($type eq "Requires") {
-                        push (@requires, $data);
-                    } elsif ($type eq "BuildRequires") {
-                        push (@build_requires, $data);
-                    } elsif ($type eq "#TestRequires") {
-                        push (@test_requires, $data);
+    foreach my $spec (@$specs_ref) {
+        my $input;
+        my $cmd = "git -C $mirror show $revision:$spec";
+        open($input, "$cmd |") or die "Failed: $cmd\n";
+
+        while (<$input>) {
+            if (m/\s*?(Requires|BuildRequires|#TestRequires):\s*(.*)$/) {
+                my $type = $1;
+                my $data = $2;
+                $data =~ s/[\s=><].*$//;
+                # Resolve subpackage names (smartmet-X-devel, smartmet-X-libs, etc.)
+                # to the main module that builds them, using the map populated from
+                # spec files. Fall back to stripping -devel for transitive modules
+                # whose spec has not yet been parsed.
+                if (defined $::subpackage_map{$data}) {
+                    $data = $::subpackage_map{$data};
+                } else {
+                    $data =~ s/-devel$//;
+                }
+                next if $data eq $module;
+                if ($data =~ m/^smartmet-/ or defined($::config->{modules}->{$data})) {
+                    if (not defined $::default_ignore{$data}) {
+                        if ($type eq "Requires") {
+                            push (@requires, $data);
+                        } elsif ($type eq "BuildRequires") {
+                            push (@build_requires, $data);
+                        } elsif ($type eq "#TestRequires") {
+                            push (@test_requires, $data);
+                        }
                     }
                 }
             }
         }
+
+        close ($input);
     }
 
-    close ($input);
-
-    #$::modules{$module}->{"requires"} = \uniq(sort(@requires));
     @requires = uniq @requires;
     @build_requires = uniq @build_requires;
     @test_requires = uniq @test_requires;
@@ -822,7 +852,22 @@ sub extract_requires($$$)
 sub get_last_release_info($)
 {
     my $module = get_module_name(shift);
-    my ($rev, $version, $spec) = get_revision_and_version($::modules{$module}->{"mirror"}, 10);
+    my ($rev, $version, $spec, $specs_ref) =
+        get_revision_and_version($::modules{$module}->{"mirror"}, 10);
+
+    if (not defined $rev) {
+        # Repository has no spec files at the top level: mark for skip.
+        print "IGNORING $module: no spec files found in repository\n";
+        $::modules{$module}->{no_spec} = 1;
+        $::modules{$module}->{requires} = [];
+        $::modules{$module}->{build_requires} = [];
+        $::modules{$module}->{test_requires} = [];
+        $::modules{$module}->{build} = 0;
+        $::modules{$module}->{tests} = 0;
+        $::modules{$module}->{install} = 0;
+        return;
+    }
+
     my $version_id = version_to_num($version);
     $::modules{$module}->{"version"} =  $version;
     if (defined($version_id)) {
@@ -830,8 +875,9 @@ sub get_last_release_info($)
     }
     $::modules{$module}->{"git_rev"} =  $rev;
     $::modules{$module}->{"spec_file"} =  $spec;
+    $::modules{$module}->{"spec_files"} = $specs_ref;
 
-    extract_requires($::modules{$module}->{"mirror"}, $spec, $rev);
+    extract_requires($::modules{$module}->{"mirror"}, $specs_ref, $rev);
 }
 
 sub check_available($)
@@ -983,11 +1029,14 @@ sub build_and_install_module($)
     }
 
     if ($::settings->{builddep}) {
-        $cmd = "sudo $::builddep -y $tmp/$spec $output_redirect_append";
-        print "Execute: $cmd\n";
-        if (system($cmd) != 0) {
-            print "### Failed to satisfy build dependencies of $module\n";
-            return 0;
+        my $specs_ref = $::modules{$module}->{spec_files} // [$spec];
+        foreach my $sp (@$specs_ref) {
+            $cmd = "sudo $::builddep -y $tmp/$sp $output_redirect_append";
+            print "Execute: $cmd\n";
+            if (system($cmd) != 0) {
+                print "### Failed to satisfy build dependencies of $module ($sp)\n";
+                return 0;
+            }
         }
     }
 
@@ -1112,6 +1161,12 @@ sub build_and_install_module_rpms_recursive
 
     get_last_release_info($module);
 
+    if ($::modules{$module}->{no_spec}) {
+        # Repository has no spec files - nothing to build here. Treat as a
+        # successful no-op so depending modules are not blocked.
+        return 1;
+    }
+
     my $dep_ref = $::modules{$module}->{"requires"};
     my $bdep_ref = $::modules{$module}->{"build_requires"};
     my $tdep_ref = $::modules{$module}->{"test_requires"};
@@ -1208,6 +1263,12 @@ sub build_and_install_module_recursive
     update_local_mirror($module);
     register_subpackages_for_module($module);
     get_last_release_info($module);
+
+    if ($::modules{$module}->{no_spec}) {
+        # Repository has no spec files - nothing to build here. Treat as a
+        # successful no-op so depending modules are not blocked.
+        return 1;
+    }
 
     my $dep_ref = $::modules{$module}->{"requires"};
     my $bdep_ref = $::modules{$module}->{"build_requires"};
