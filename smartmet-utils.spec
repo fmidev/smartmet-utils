@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.5.19
+Version: 26.5.20
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -85,6 +85,13 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed May 20 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.20-1.fmi
+- smartbuild: derive subpackage->module mapping from each module's spec
+  file instead of relying on the manual -devel suffix strip and a hand
+  maintained ignore list; scan every top-level *.spec file in a repo
+  (e.g. smartmet-monitor's monitor.spec + webmon.spec) for dependencies
+  and silently skip repositories that have no top-level spec files.
+
 * Tue May 19 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.19-1.fmi
 - smartbuild: update default package list
 
