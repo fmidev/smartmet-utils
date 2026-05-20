@@ -95,6 +95,19 @@ my @make_options;
 %::available = ();
 %::installed = ();
 
+# Maps every package name (main and subpackages) listed in a module's spec
+# file to the main module (repo) name that builds it. Populated by
+# register_subpackages_for_module() from each module's spec.
+%::subpackage_map = ();
+
+# Tracks which modules have had their subpackages registered to avoid
+# re-parsing the same spec file multiple times.
+%::subpackages_registered = ();
+
+# Tracks which mirrors have already been cloned/fetched this run so the
+# pre-pass and main pass do not repeat git network operations.
+%::mirror_fetched = ();
+
 $::pkg_man = undef;
 $::get_available = undef;
 $::debug_dir = undef;
@@ -501,10 +514,12 @@ sub get_repo_name($)
     return $module;
 }
 
-sub update_local_mirror($)
+sub ensure_mirror_present($)
 {
     my $module = get_module_name(shift);
     my $mirror_dir = "$::mirror/$module.git";
+
+    return $mirror_dir if $::mirror_fetched{$module};
 
     mkdir("$::workspace", 0700) unless (-d "$::workspace" );
     mkdir("$::mirror", 0700) unless(-d "$::mirror" );
@@ -519,6 +534,14 @@ sub update_local_mirror($)
                 or die "Failed to clone $url";
         }
     }
+    $::mirror_fetched{$module} = 1;
+    return $mirror_dir;
+}
+
+sub update_local_mirror($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = ensure_mirror_present($module);
 
     $::modules{$module} = {};
     $::modules{$module} -> {"mirror"} = $mirror_dir;
@@ -659,6 +682,84 @@ sub get_revision_and_version
     close $input;
 }
 
+#   Parse a spec file's textual content and return the list of package names
+#   it defines: the main package (Name:) plus each %package subpackage. RPM
+#   macros defined via %define / %global are expanded.
+sub extract_packages_from_spec_content($)
+{
+    my $content = shift;
+    return () unless defined $content && length $content;
+
+    my %macros;
+    while ($content =~ /^\s*%(?:define|global)\s+(\S+)\s+(.+?)\s*$/mg) {
+        $macros{$1} = $2;
+    }
+
+    my $resolve = sub {
+        my $s = shift;
+        return $s unless defined $s;
+        for (1..10) {
+            my $changed = 0;
+            $s =~ s/%\{(\??)(\w+)\}/
+                exists $macros{$2}
+                    ? do { $changed = 1; $macros{$2} }
+                    : ($1 eq '?' ? '' : "%{$2}")
+            /ge;
+            last unless $changed;
+        }
+        return $s;
+    };
+
+    my $main_name;
+    if ($content =~ /^\s*Name:\s*(.+?)\s*$/m) {
+        $main_name = $resolve->($1);
+    }
+    return () unless defined $main_name && length $main_name;
+
+    my @packages = ($main_name);
+
+    while ($content =~ /^\s*%package\s+(.+?)\s*$/mg) {
+        my $rest = $1;
+        $rest =~ s/^\s+//;
+        $rest =~ s/\s+$//;
+        my $sub;
+        if ($rest =~ /^-n\s+(\S+)/) {
+            $sub = $resolve->($1);
+        } else {
+            $sub = "$main_name-$rest";
+        }
+        push @packages, $sub if defined $sub && length $sub;
+    }
+
+    return @packages;
+}
+
+#   Read the spec file of $module from its mirrored git repo and record every
+#   package name it defines (main package + subpackages) in %::subpackage_map
+#   so extract_requires() can resolve subpackage references back to the main
+#   module to build.
+sub register_subpackages_for_module($)
+{
+    my $module = get_module_name(shift);
+    return if $::subpackages_registered{$module};
+    $::subpackages_registered{$module} = 1;
+
+    my $mirror_dir = ensure_mirror_present($module);
+    my $branch = locate_branch($mirror_dir);
+    my $spec  = get_spec_file($mirror_dir);
+
+    my $content;
+    my $cmd = "git -C $mirror_dir show $branch:$spec";
+    open(my $fh, "$cmd |") or die "Failed: $cmd: $!";
+    { local $/; $content = <$fh>; }
+    close $fh;
+
+    my @pkgs = extract_packages_from_spec_content($content);
+    foreach my $pkg (@pkgs) {
+        $::subpackage_map{$pkg} = $module;
+    }
+}
+
 sub extract_requires($$$)
 {
     my $module = get_module_name(shift);
@@ -680,7 +781,16 @@ sub extract_requires($$$)
             my $type = $1;
             my $data = $2;
             $data =~ s/[\s=><].*$//;
-            $data =~ s/-devel$//;
+            # Resolve subpackage names (smartmet-X-devel, smartmet-X-libs, etc.)
+            # to the main module that builds them, using the map populated from
+            # spec files. Fall back to stripping -devel for transitive modules
+            # whose spec has not yet been parsed.
+            if (defined $::subpackage_map{$data}) {
+                $data = $::subpackage_map{$data};
+            } else {
+                $data =~ s/-devel$//;
+            }
+            next if $data eq $module;
             if ($data =~ m/^smartmet-/ or defined($::config->{modules}->{$data})) {
                 if (not defined $::default_ignore{$data}) {
                     if ($type eq "Requires") {
@@ -998,6 +1108,7 @@ sub build_and_install_module_rpms_recursive
     print "CHECKING: ".join(' ==> ', @build_path)."\n";
 
     update_local_mirror($module);
+    register_subpackages_for_module($module);
 
     get_last_release_info($module);
 
@@ -1095,6 +1206,7 @@ sub build_and_install_module_recursive
     print "CHECKING: ".join(' ==> ', @build_path)."\n";
 
     update_local_mirror($module);
+    register_subpackages_for_module($module);
     get_last_release_info($module);
 
     my $dep_ref = $::modules{$module}->{"requires"};
@@ -1436,6 +1548,19 @@ if ($::settings->{test_rpms} and $::settings->{devrpm}) {
 }
 
 my $modules_ref = $::config->{modules};
+
+# Pre-pass: clone/fetch each configured module's mirror and parse its spec file
+# so the map from subpackage names (e.g. smartmet-X-devel, smartmet-X-libs) to
+# the main module that builds them is available to extract_requires() once the
+# build pass starts.
+foreach my $module (keys %$modules_ref) {
+    register_subpackages_for_module($module);
+}
+
+if ($::settings->{verbose}) {
+    print Dumper(\%::subpackage_map, ['subpackage_map']);
+}
+
 for my $module (keys %$modules_ref) {
     if ($::settings->{release_rpms} or $::settings->{devrpm} or $::settings->{test_rpms}) {
         build_and_install_module_rpms_recursive($module);
