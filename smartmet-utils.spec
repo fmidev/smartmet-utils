@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.5.20
+Version: 26.5.22
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -83,6 +83,9 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Fri May 22 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.22-1.fmi
+- Remove image comparison related tools (moved to smartmet-library-regression)
+
 * Wed May 20 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.20-1.fmi
 - smartbuild: derive subpackage->module mapping from each module's spec
   file instead of relying on the manual -devel suffix strip and a hand
