@@ -18,15 +18,9 @@ PROG = \
 	smartpngdiff \
 	smartrpmsort
 
-CPP_PROG = \
-	smartimgdiff_psnr
-
 .PHONY: rpm
 
-all: $(CPP_PROG)
-
-smartimgdiff_psnr: smartimgdiff_psnr.cpp
-	$(CXX) -std=c++17 -O2 -g3 -Wall -Wextra -o $@ $< $(shell pkg-config --cflags --libs Magick++)
+all:
 
 clean:
 	rm -f *~

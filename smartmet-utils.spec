@@ -7,6 +7,7 @@ Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
+BuildArch: noarch
 Source0: %{name}.tar.gz
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot-%(%{__id_u} -n)
 BuildRequires: make
@@ -43,7 +44,6 @@ Provides: smartpngdiff
 Provides: smartrpmsort
 Provides: smartmet-makefile-inc
 Requires: make bash perl
-Requires: ImageMagick
 Requires: perl-Carp-Always
 Requires: perl-Data-Dumper
 Requires: perl-Getopt-Long
@@ -77,9 +77,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartmkciconfig
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
-%{_bindir}/smartpngdiff
 %{_bindir}/smartrpmsort
-%{_bindir}/smartimgdiff_psnr
 %{_datadir}/smartmet/devel/makefile.inc
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 %{_mandir}/man1/*.1.gz

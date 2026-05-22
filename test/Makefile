@@ -4,10 +4,7 @@ CLANG_VER := clang version 11.0.0 (Red Hat 11.0.0-1.module+el8.4.0+8598+a071fcd5
 
 export __SMARTCXXCHECK__ := ../smartcxxcheck
 
-test:	test-pngcomp test-check-proj test-check-gdal test-check-geos test-check-sqlite
-
-test-pngcomp:
-	$(MAKE) -C pngdiff test
+test:	test-check-proj test-check-gdal test-check-geos test-check-sqlite
 
 test-check-proj:
 	$(MAKE) -f check-proj.mk
