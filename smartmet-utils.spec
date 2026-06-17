@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.5.22
+Version: 26.6.17
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -83,6 +83,12 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-1.fmi
+- smartbuild: clone GIT mirrors blobless (--filter=blob:none) and backfill the
+  blobs of a revision on demand only when it is actually built, so the spec/
+  dependency metadata pass no longer transfers whole repositories (--full-mirror
+  restores the old behaviour)
+
 * Fri May 22 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.5.22-1.fmi
 - Remove image comparison related tools (moved to smartmet-library-regression)
 

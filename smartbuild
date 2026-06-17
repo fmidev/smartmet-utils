@@ -3,7 +3,9 @@
 #
 #  Build smartmet-* packages
 #  - checks presence of installed packages and ones found in configured RPM repos
-#  - large amount of disk space (about 1.5GB) is required for bare GIT repositories
+#  - bare GIT mirrors are cloned blobless (--filter=blob:none) to keep the metadata
+#    pass cheap; file blobs are fetched on demand only for revisions actually built
+#    (use --full-mirror to clone everything up front, the old behaviour)
 #  - additionally disk space for build process is required
 #  - sudo access is required for package installation
 #
@@ -526,16 +528,60 @@ sub ensure_mirror_present($)
 
     if (not $::settings->{local_only}) {
         if ( -d $mirror_dir ) {
+            # Fetch keeps the repository's existing object-filter setting: a mirror
+            # cloned blobless stays blobless, a full mirror stays full.
             system("git -C $mirror_dir fetch") == 0 or die "Failed to fetch updates for $mirror_dir";
         } else {
             my $url = "$::base_url/".get_repo_name($module);
+            # Clone blobless by default (--filter=blob:none): all commits, trees and
+            # tags are fetched but no file blobs, so spec files and the dependency
+            # graph can be read cheaply without transferring the whole repository.
+            # The blobs of the single revision that is actually built are backfilled
+            # on demand in build_and_install_module() via backfill_revision_blobs().
+            # --full-mirror restores the old behaviour of fetching everything up front.
+            my $filter = $::settings->{full_mirror} ? "" : "--filter=blob:none ";
             print("Cloning: $url ==> $mirror_dir\n");
-            system("git -C $::mirror clone --bare --mirror $url $mirror_dir") == 0
+            system("git -C $::mirror clone --bare --mirror ${filter}$url $mirror_dir") == 0
                 or die "Failed to clone $url";
         }
     }
     $::mirror_fetched{$module} = 1;
     return $mirror_dir;
+}
+
+#   Backfill the file blobs of a single revision into a blobless mirror so that a
+#   subsequent local "git clone" of that mirror produces a complete working tree.
+#   No-op for full mirrors and for revisions already complete (blobs present), and
+#   skipped in --local mode since it needs network. Targets just the given
+#   revision's snapshot, not the whole history, to keep the transfer minimal.
+sub backfill_revision_blobs($$)
+{
+    my $mirror_dir = shift;
+    my $rev = shift;
+
+    return if $::settings->{local_only};
+
+    my $sha = `git -C $mirror_dir rev-parse --verify "${rev}^{commit}" 2>/dev/null`;
+    chomp $sha;
+    if ($sha !~ m/^[0-9a-f]{7,}$/) {
+        print "WARNING: cannot resolve revision '$rev' in $mirror_dir; skipping blob backfill\n";
+        return;
+    }
+
+    # If this revision's tree already has all its blobs (full mirror, or a previous
+    # backfill), there is nothing to do.
+    my $missing = `git -C $mirror_dir rev-list --objects --no-walk $sha --missing=print 2>/dev/null | grep -c '^?'`;
+    chomp $missing;
+    return if defined($missing) and $missing eq "0";
+
+    # A plain "git fetch origin <sha>" is a no-op because the commit is already
+    # present; only its blobs are missing. --refetch re-requests the objects while a
+    # permissive filter overrides the stored blob:none filter so the blobs come too.
+    my $cmd = "git -C $mirror_dir fetch --refetch --filter=blob:limit=1g origin $sha";
+    print "Backfilling blobs for revision $sha of ".basename($mirror_dir)."\n";
+    print "Execute: $cmd\n";
+    system($cmd) == 0
+        or print "WARNING: failed to backfill blobs for $sha; checkout may be incomplete\n";
 }
 
 sub update_local_mirror($)
@@ -1000,6 +1046,13 @@ sub build_and_install_module($)
 
     print_summary $module;
 
+    # Mirrors are cloned blobless to save bandwidth/disk; backfill the blobs of the
+    # revision(s) this build checks out so the local clone below has a full working
+    # tree. The local clone first checks out the mirror's HEAD (default branch);
+    # the --test-rpms path additionally checks out $rev explicitly (see below).
+    backfill_revision_blobs($mirror_dir, "HEAD");
+    backfill_revision_blobs($mirror_dir, $rev) if $::settings->{test_rpms};
+
     $cmd = "git -C $mirror_dir clone . $tmp $output_redirect_append";
     print "Execute: $cmd\n";
     system($cmd) == 0
@@ -1344,6 +1397,9 @@ sub help
     print "  --recursive          - build also dependencies recursively\n";
     print "  --update             - only update local GIT mirrors (no build)\n";
     print "  --local              - do not update local GIT mirrors\n";
+    print "  --full-mirror        - clone full GIT mirrors instead of blobless ones (--filter=blob:none).\n";
+    print "                         By default mirrors are cloned without file blobs to save bandwidth and\n";
+    print "                         disk; blobs are fetched on demand only for revisions that are built\n";
     print "  --dump-config        - do not build or update GIT repos, only dump current configuration\n";
     print "  --add-module         - add one or more SmartMet modules (comma separated list). Can also\n";
     print "                         specified more than once\n";
@@ -1386,6 +1442,7 @@ sub handle_params
         'recursive'            => \$param{recursive},
         'update'               => \$param{update_only},
         'local'                => \$param{local_only},
+        'full-mirror'          => \$param{full_mirror},
         'dump-config'          => \$param{dump_config},
         'add-module=s@'        => \$param{add_module},
         'remove-module=s@'     => \$param{remove_module},
@@ -1529,7 +1586,7 @@ sub handle_params
 
     my $settings;
     foreach ('release_rpms', 'test_rpms', 'release', 'current', 'recursive', 'update_only',
-             'local_only', 'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose',
+             'local_only', 'full_mirror', 'dump_config', 'asan', 'tsan', 'builddep', 'clang', 'verbose',
              'separate_logs', 'https', 'ignore_installed', 'dump_available') {
         if (defined($param{$_})) {
             $settings->{$_} = 1;
