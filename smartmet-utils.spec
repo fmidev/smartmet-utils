@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.6.17
-Release: 2%{?dist}.fmi
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -83,6 +83,13 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-3.fmi
+- smartbuild: treat "available version newer than git" as a non-fatal skip again.
+  The plan/build refactor in 26.6.17-2 wrongly recorded it as a build failure,
+  making a run exit non-zero when the RPM repository was simply ahead of a stale
+  git checkout (e.g. smartmet-monitor). Restores the original behaviour of
+  skipping such a package without failing the run.
+
 * Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-2.fmi
 - smartbuild: split the --release-rpms/--test-rpms pass into plan, batch-install
   and build phases. Already-available packages are now installed/upgraded in a

@@ -1022,12 +1022,15 @@ sub classify_module($)
 
     # --release-rpms below.
 
-    # The repository must never be ahead of git.
+    # The repository has a newer version than git: the git checkout is simply stale
+    # for this package (e.g. a release that was not pushed to this tree). Nothing for
+    # us to build or install from git - skip it. This is NOT a failure: it must not
+    # land in @::failed_modules nor make the run exit non-zero (matches the original
+    # check_available(), which returned 0 here without recording a failure).
     if (defined($av) and (version_to_num($av) > version_to_num($gv))) {
-        print("ERROR: Available version $av of $module is newer than one provided".
-              " by GIT repository ($gv)\n");
-        $::modules{$module}->{status} = 'failed';
-        push(@::failed_modules, $module);
+        print("WARNING: Available version $av of $module is newer than the GIT".
+              " version ($gv); repository is ahead of git, skipping $module\n");
+        $::modules{$module}->{status} = 'skipped';
         return;
     }
 
