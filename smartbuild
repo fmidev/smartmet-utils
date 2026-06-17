@@ -110,6 +110,16 @@ my @make_options;
 # pre-pass and main pass do not repeat git network operations.
 %::mirror_fetched = ();
 
+# Populated by the planning pass (plan_module_rpms_recursive) for the
+# --release-rpms / --test-rpms paths:
+#   @::install_queue - modules whose target version is already available in the
+#                      RPM repositories; installed/upgraded together in a single
+#                      package-manager transaction before any building starts.
+#   @::build_queue   - modules that must be built from source, in dependency
+#                      order (each module appears after all of its dependencies).
+@::install_queue = ();
+@::build_queue = ();
+
 $::pkg_man = undef;
 $::get_available = undef;
 $::debug_dir = undef;
@@ -584,6 +594,59 @@ sub backfill_revision_blobs($$)
         or print "WARNING: failed to backfill blobs for $sha; checkout may be incomplete\n";
 }
 
+#   Update every already-cloned GIT mirror in parallel before the (serial) planning
+#   pass. Network "git fetch" of an up-to-date mirror is dominated by per-repository
+#   SSH/negotiation latency, so doing them one at a time makes a "nothing to build"
+#   run needlessly slow; fetching concurrently turns that into roughly one round
+#   trip. Mirrors updated here are marked in %::mirror_fetched so ensure_mirror_present
+#   does not fetch them again. New modules without a mirror yet are still cloned on
+#   demand during planning (rare, and clones cannot be merged into a no-op fetch).
+sub prefetch_mirrors_parallel
+{
+    return if $::settings->{local_only};
+
+    my @mirrors = glob("$::mirror/*.git");
+    return unless @mirrors;
+
+    my $parallel = $::num_cpus > 1 ? 2 * $::num_cpus : 8;
+    $parallel = 16 if $parallel > 16;
+
+    print "Updating ".scalar(@mirrors)." GIT mirror(s) in parallel (max $parallel concurrent)...\n";
+
+    my %pid_to_module;
+    my $running = 0;
+    my @queue = @mirrors;
+
+    while (@queue or $running) {
+        while (@queue and $running < $parallel and not defined $::canceled) {
+            my $dir = shift @queue;
+            my $module = basename($dir);
+            $module =~ s/\.git$//;
+
+            my $pid = fork();
+            defined $pid or die "fork failed: $!";
+            if ($pid == 0) {
+                # Child: fetch quietly, success/failure via exit code only.
+                my $rc = system("git -C $dir fetch --quiet >/dev/null 2>&1");
+                exit($rc == 0 ? 0 : 1);
+            }
+            $pid_to_module{$pid} = $module;
+            $running++;
+        }
+
+        my $pid = wait();
+        last if $pid < 0;
+        my $module = delete $pid_to_module{$pid};
+        $running--;
+        next unless defined $module;
+        if ($? == 0) {
+            $::mirror_fetched{$module} = 1;
+        } else {
+            print "WARNING: failed to update mirror $module; will retry on demand\n";
+        }
+    }
+}
+
 sub update_local_mirror($)
 {
     my $module = get_module_name(shift);
@@ -926,63 +989,84 @@ sub get_last_release_info($)
     extract_requires($::modules{$module}->{"mirror"}, $specs_ref, $rev);
 }
 
-sub check_available($)
+#   Classify one module (for the --release-rpms / --test-rpms paths) into one of
+#   the planning states stored in $::modules{$module}->{status}, without running
+#   the package manager or building anything:
+#       'uptodate'  - nothing to do (already installed at the target version, or
+#                     no spec file)
+#       'install'   - target version is available in the RPM repositories; queued
+#                     in @::install_queue for a single batched install/upgrade
+#       'build'     - must be built from source; queued in @::build_queue
+#       'failed'    - a fatal inconsistency was detected (repo or installed version
+#                     newer than the one in git)
+#   The actual installs and builds are carried out later by run_planned_installs()
+#   and run_planned_builds().
+sub classify_module($)
 {
     my $module = get_module_name(shift);
 
-    if (not defined $::pkg_man) {
-        return 1;
-    }
+    my $gv = $::modules{$module}->{version};
+    my $av = $::available{$module};
+    my $inst = $::installed{$module};
 
     $::modules{$module}->{requires_build} = 0;
 
-    if (defined($::available{$module})) {
-        my $id1 = version_to_num($::available{$module});
-        my $id2 = version_to_num($::modules{$module}->{version});
-        if (defined($id1) and defined($id2) and ($id1 > $id2)) {
-            print("ERROR: Available version $::available{$module} of $module is newer than one provided".
-                  " by GIT repository ($::modules{$module}->{version})\n");
-            return 0;
-        }
-    }
-
-    my $install_output_fn = undef;
-    my $install_output_redirect = "";
-    if ($::settings->{separate_logs}) {
-        $install_output_fn = "workspace/log/install-$module.log";
-        $install_output_redirect = " >$install_output_fn 2>&1";
-    }
-
-    if (defined($::available{$module}) and ($::available{$module} eq $::modules{$module}->{version})) {
-        my $cmd;
-        my $id_available = version_to_num($::available{$module});
-        my $id_current = version_to_num($::modules{$module}->{version});
-        if (defined($::installed{$module})) {
-            my $id_installed = version_to_num($::installed{$module});
-            if (defined($id_installed) and defined($id_available) and $id_available > $id_installed) {
-                print "Current version of $module $::modules{$module}->{version} found in repository --> upgrading to it\n";
-                $cmd = "sudo $::pkg_man -y upgrade $module".'*';
-            } else {
-                return 1;
-            }
-        } else {
-            print "Current version of $module $::modules{$module}->{version} found in repository --> installing it\n";
-            $cmd = "sudo $::pkg_man -y install $module".'*';
-        }
-        $cmd = $cmd.$install_output_redirect;
-        print "Executing: $cmd\n";
-        if (system($cmd) == 0) {
-            return 1;
-        } else {
-            print "ERROR: command '$cmd' failed\n";
-            if (defined($install_output_fn)) {
-                cat ($install_output_fn);
-            }
-            return 0;
-        }
-    } else {
+    # Test RPMs are always built from the current branch state, regardless of what
+    # is installed or available in the repositories.
+    if ($::settings->{test_rpms}) {
         $::modules{$module}->{requires_build} = 1;
-        return 1;
+        $::modules{$module}->{status} = 'build';
+        push(@::build_queue, $module);
+        return;
+    }
+
+    # --release-rpms below.
+
+    # The repository must never be ahead of git.
+    if (defined($av) and (version_to_num($av) > version_to_num($gv))) {
+        print("ERROR: Available version $av of $module is newer than one provided".
+              " by GIT repository ($gv)\n");
+        $::modules{$module}->{status} = 'failed';
+        push(@::failed_modules, $module);
+        return;
+    }
+
+    if (defined($av) and ($av eq $gv)) {
+        # Target version exists in the repositories.
+        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
+            # Installed version is newer than both git and the repository.
+            print "ERROR: Installed version of $module ($inst) is newer than";
+            print " available from git ($gv): missing 'git push' suspected\n";
+            $::modules{$module}->{status} = 'failed';
+            push(@::failed_modules, $module);
+        } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($av))) {
+            # Not installed, or an older version is installed: install/upgrade from
+            # the repository instead of building. ignore_installed only forces source
+            # builds, never a reinstall of an already-current package.
+            print "$module $gv found in repository --> queued for install/upgrade\n";
+            $::modules{$module}->{status} = 'install';
+            push(@::install_queue, $module);
+        } else {
+            $::modules{$module}->{status} = 'uptodate';
+        }
+        return;
+    }
+
+    # Target version is not in the repositories: build it, unless it happens to be
+    # installed already at exactly that version.
+    if (!defined($inst) or $::settings->{ignore_installed} or ($inst ne $gv)) {
+        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
+            print "ERROR: Installed version of $module ($inst) is newer than";
+            print " available from git ($gv): missing 'git push' suspected\n";
+            $::modules{$module}->{status} = 'failed';
+            push(@::failed_modules, $module);
+            return;
+        }
+        $::modules{$module}->{requires_build} = 1;
+        $::modules{$module}->{status} = 'build';
+        push(@::build_queue, $module);
+    } else {
+        $::modules{$module}->{status} = 'uptodate';
     }
 }
 
@@ -1193,7 +1277,33 @@ sub try_install_cached_test_rpm($)
     }
 }
 
-sub build_and_install_module_rpms_recursive
+#   Return the smartmet dependencies (runtime + build + test) of a module that are
+#   themselves part of this run, as a de-duplicated list.
+#   The smartmet dependencies (runtime + build + test) of a module, de-duplicated.
+#   These names come from extract_requires(), which has already resolved them to
+#   buildable module names; callers must not assume each has a %::modules entry yet
+#   (during planning a dependency may not have been visited).
+sub module_dependencies($)
+{
+    my $module = get_module_name(shift);
+    my %deplist;
+    foreach (@{$::modules{$module}->{requires} // []},
+             @{$::modules{$module}->{build_requires} // []},
+             @{$::modules{$module}->{test_requires} // []}) {
+        $deplist{$_} = 1;
+    }
+    return keys %deplist;
+}
+
+#   Planning pass for the --release-rpms / --test-rpms paths. Walks the dependency
+#   graph (depth first), updating each module's GIT mirror and parsing its spec, and
+#   classifies every module via classify_module() into the install / build / up-to-
+#   date queues. No package manager command is run and nothing is built here: that
+#   is left to run_planned_installs() and run_planned_builds(), so that all packages
+#   already available in the repositories can be installed in a single transaction
+#   before the (slow) source builds begin. Dependencies are classified before the
+#   modules that depend on them, so @::build_queue ends up in valid build order.
+sub plan_module_rpms_recursive
 {
     my $module = get_module_name(shift);
 
@@ -1206,97 +1316,111 @@ sub build_and_install_module_rpms_recursive
     }
     push(@build_path, $module);
 
-    my $dep_path = join(' ==> ', @build_path);
+    # Each module is planned exactly once even when reached via several dependents.
+    return if $::modules{$module}->{planned};
+
     print "CHECKING: ".join(' ==> ', @build_path)."\n";
 
     update_local_mirror($module);
     register_subpackages_for_module($module);
-
     get_last_release_info($module);
 
+    $::modules{$module}->{planned} = 1;
+
     if ($::modules{$module}->{no_spec}) {
-        # Repository has no spec files - nothing to build here. Treat as a
-        # successful no-op so depending modules are not blocked.
-        return 1;
+        # Repository has no spec files - nothing to build. Treat as up to date so
+        # depending modules are not blocked.
+        $::modules{$module}->{status} = 'uptodate';
+        return;
     }
-
-    my $dep_ref = $::modules{$module}->{"requires"};
-    my $bdep_ref = $::modules{$module}->{"build_requires"};
-    my $tdep_ref = $::modules{$module}->{"test_requires"};
-
-    my %deplist;
-    foreach (@$dep_ref, @$bdep_ref, @$tdep_ref) { $deplist{$_} = 1; }
-
-    my $ret_code = 1;
 
     if ($::settings->{recursive}) {
-        foreach my $dep (keys %deplist) {
-            if (defined $::modules{$dep}) {
-                # We already tried to build dependency module. Check whether that build succeeded
-                if ($::modules{$dep}->{install} < 0) {
-                    # Earlier build failed: cannot build depending package build failure
-                    print "FAILED DEPENDENCY: $dep_path\n";
-                    $ret_code = 0;
-                }
-            } else {
-                if ($ret_code) {
-                    if (not build_and_install_module_rpms_recursive($dep, \@build_path)) {
-                        $ret_code = 0;
-                    }
-                } else {
-                    print "SKIPPED DEPENDENCY: $dep_path => $dep\n";
-                }
-            }
+        foreach my $dep (module_dependencies($module)) {
+            plan_module_rpms_recursive($dep, \@build_path);
         }
     }
 
-    if ($::settings->{update_only}) {
-        return $ret_code;
+    classify_module($module);
+}
+
+#   Install (or upgrade) every module queued by the planning pass whose target
+#   version is already available in the RPM repositories, in a single package
+#   manager transaction. Falls back to installing one module at a time if the batch
+#   transaction fails, so a single bad package does not block all the others.
+sub run_planned_installs
+{
+    return unless @::install_queue;
+
+    my $log_redirect = "";
+    if ($::settings->{separate_logs}) {
+        $log_redirect = " >workspace/log/install-batch.log 2>&1";
     }
 
-    if ($::settings->{release_rpms}) {
-        $ret_code = check_available($module);
-    } elsif ($::settings->{test_rpms}) {
-        # Test RPMs are always built from current branch state; skip availability check.
-        $::modules{$module}->{requires_build} = 1;
+    my @globs = map { "'${_}*'" } @::install_queue;
+    my $cmd = "sudo $::pkg_man -y install ".join(' ', @globs).$log_redirect;
+    print "Installing ".scalar(@::install_queue)." up-to-date package(s) from repositories:\n";
+    print "    $_\n" foreach (@::install_queue);
+    print "Executing: $cmd\n";
+
+    if (system($cmd) == 0) {
+        $::modules{$_}->{status} = 'installed' foreach (@::install_queue);
+        return;
     }
 
-    if ($ret_code) {
-        if ($::settings->{test_rpms}
-            or !defined($::installed{$module})
-            or $::settings->{ignore_installed}
-            or ($::installed{$module} ne $::modules{$module}->{"version"})) {
+    print "WARNING: batched install failed; retrying packages individually\n";
+    cat("workspace/log/install-batch.log") if $::settings->{separate_logs};
+    foreach my $module (@::install_queue) {
+        my $one = "sudo $::pkg_man -y install '${module}*'".$log_redirect;
+        print "Executing: $one\n";
+        if (system($one) == 0) {
+            $::modules{$module}->{status} = 'installed';
+        } else {
+            print "ERROR: failed to install $module from repository\n";
+            $::modules{$module}->{status} = 'failed';
+            push(@::failed_modules, $module);
+        }
+    }
+}
 
-            if (!$::settings->{test_rpms}
-                  and !defined($::settings->{devrpm} and defined($::installed{$module}))) {
-               if (defined($::installed{$module})
-                     and (version_to_num($::installed{$module}) > version_to_num($::modules{$module}->{"version"}))) {
-                  print "ERROR: Installed version of $module ($::installed{$module}) is newer than";
-                  print " available from git ($::modules{$module}->{version}): missing 'git push' suspected\n";
-                  push(@::failed_modules, $module);
-                  return 0;
-               }
-            }
+#   Build (and install) every module queued by the planning pass, in dependency
+#   order. A module is skipped if any of its dependencies failed to build or
+#   install, mirroring the FAILED DEPENDENCY handling of the source-build path.
+sub run_planned_builds
+{
+    foreach my $module (@::build_queue) {
+        next unless defined($::modules{$module}->{status})
+                    and $::modules{$module}->{status} eq 'build';
 
-            if ($::modules{$module}->{requires_build}) {
-                if ($::settings->{test_rpms} and try_install_cached_test_rpm($module)) {
-                    # Exact-SHA match found in export dir; installed from cache.
-                } else {
-                    print "BUILDING: ${dep_path}-$::modules{$module}->{version}\n";
-                    if (build_and_install_module($module)) {
-                        export_rpms($module);
-                    } else {
-                        push (@::failed_modules, $module);
-                        $ret_code = 0;
-                    }
-                }
+        my $failed_dep;
+        foreach my $dep (module_dependencies($module)) {
+            next unless defined $::modules{$dep};
+            if (defined($::modules{$dep}->{status}) and $::modules{$dep}->{status} eq 'failed') {
+                $failed_dep = $dep;
+                last;
             }
         }
-    } else {
-        print "SKIPPING BUILD DUE TO FAILED DEPENDENCY: $dep_path\n";
-    }
+        if (defined($failed_dep)) {
+            print "SKIPPING BUILD OF $module DUE TO FAILED DEPENDENCY: $failed_dep\n";
+            $::modules{$module}->{status} = 'failed';
+            push(@::failed_modules, $module);
+            next;
+        }
 
-    return $ret_code;
+        if ($::settings->{test_rpms} and try_install_cached_test_rpm($module)) {
+            # Exact-SHA match found in export dir; installed from cache.
+            $::modules{$module}->{status} = 'built';
+            next;
+        }
+
+        print "BUILDING: $module-$::modules{$module}->{version}\n";
+        if (build_and_install_module($module)) {
+            export_rpms($module);
+            $::modules{$module}->{status} = 'built';
+        } else {
+            push(@::failed_modules, $module);
+            $::modules{$module}->{status} = 'failed';
+        }
+    }
 }
 
 sub build_and_install_module_recursive
@@ -1667,6 +1791,10 @@ if ($::settings->{test_rpms} and $::settings->{devrpm}) {
 
 my $modules_ref = $::config->{modules};
 
+# Warm up all existing GIT mirrors concurrently so the serial passes below find them
+# already up to date instead of paying per-repository network latency one at a time.
+prefetch_mirrors_parallel();
+
 # Pre-pass: clone/fetch each configured module's mirror and parse its spec file
 # so the map from subpackage names (e.g. smartmet-X-devel, smartmet-X-libs) to
 # the main module that builds them is available to extract_requires() once the
@@ -1679,10 +1807,19 @@ if ($::settings->{verbose}) {
     print Dumper(\%::subpackage_map, ['subpackage_map']);
 }
 
-for my $module (keys %$modules_ref) {
-    if ($::settings->{release_rpms} or $::settings->{devrpm} or $::settings->{test_rpms}) {
-        build_and_install_module_rpms_recursive($module);
-    } else {
+if ($::settings->{release_rpms} or $::settings->{devrpm} or $::settings->{test_rpms}) {
+    # Plan first (update mirrors, parse specs, classify every module), then install
+    # all already-available packages in one transaction, then build the rest in
+    # dependency order.
+    for my $module (keys %$modules_ref) {
+        plan_module_rpms_recursive($module);
+    }
+    unless ($::settings->{update_only}) {
+        run_planned_installs();
+        run_planned_builds();
+    }
+} else {
+    for my $module (keys %$modules_ref) {
         build_and_install_module_recursive($module);
     }
 }

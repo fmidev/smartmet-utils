@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.6.17
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -83,6 +83,14 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-2.fmi
+- smartbuild: split the --release-rpms/--test-rpms pass into plan, batch-install
+  and build phases. Already-available packages are now installed/upgraded in a
+  single package-manager transaction and packages already up to date trigger no
+  command at all, instead of one install per package. Existing GIT mirrors are
+  also fetched in parallel before planning, so a "nothing to build" run no longer
+  pays per-repository network latency one mirror at a time.
+
 * Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-1.fmi
 - smartbuild: clone GIT mirrors blobless (--filter=blob:none) and backfill the
   blobs of a revision on demand only when it is actually built, so the spec/
