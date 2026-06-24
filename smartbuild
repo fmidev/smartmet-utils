@@ -916,7 +916,7 @@ sub extract_requires($$$)
         open($input, "$cmd |") or die "Failed: $cmd\n";
 
         while (<$input>) {
-            if (m/\s*?(Requires|BuildRequires|#TestRequires):\s*(.*)$/) {
+            if (m/^\s*(Requires|BuildRequires|#TestRequires):\s*(.*)$/) {
                 my $type = $1;
                 my $data = $2;
                 $data =~ s/[\s=><].*$//;

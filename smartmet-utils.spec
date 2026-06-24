@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.6.17
-Release: 3%{?dist}.fmi
+Version: 26.6.24
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -83,6 +83,14 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-1.fmi
+- smartbuild: anchor the Requires/BuildRequires/#TestRequires regex to the
+  start of the line so that "Requires:" mentioned in spec comments or changelog
+  prose is no longer parsed as a real dependency. Previously a changelog line
+  such as `Requires: smartmet-webmon` produced a bogus "smartmet-webmon`"
+  dependency (note the stray backtick) that did not match the ignore list,
+  causing smartbuild to try cloning a non-existent repository and fail.
+
 * Wed Jun 17 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.17-3.fmi
 - smartbuild: treat "available version newer than git" as a non-fatal skip again.
   The plan/build refactor in 26.6.17-2 wrongly recorded it as a build failure,
