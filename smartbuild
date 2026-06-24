@@ -565,20 +565,24 @@ sub ensure_mirror_present($)
 
 #   Backfill the file blobs of a revision into a blobless mirror so that a
 #   subsequent local "git clone" of that mirror produces a complete working tree.
-#   Skipped in --local mode (needs network) and for full mirrors (every blob is
-#   already present). A blobless mirror is identified reliably by its promisor
-#   remote, set by clone --filter; full mirrors never have it. We deliberately do
-#   NOT try to detect "blobs already present" by counting missing objects: that
-#   check failed open (any error was read as "nothing missing"), skipping the
-#   backfill and leaving the local clone with no blobs to check out (exit 128).
-#   Instead each (mirror, sha) pair is backfilled at most once per run, tracked in
-#   %::blobs_backfilled.
+#
+#   Gated on the mirror's promisor remote (set by "clone --filter"), NOT on --local:
+#   a full mirror has every blob and no promisor, so it returns without any network;
+#   a blobless mirror genuinely needs the network to complete a checkout wherever the
+#   build runs -- including the --local build pass, which is where the release CI
+#   actually builds (mirrors are created in an earlier --update pass, then reused with
+#   --local). Short-circuiting on --local left that clone with no blobs (exit 128).
+#
+#   By preference the blobs of just this one revision's tree are fetched by object id,
+#   so the transfer is a single snapshot. A filtered "--refetch" is used only as a
+#   fallback, as it pulls every historical version of every file (blob:limit=1g over
+#   the whole reachable history), defeating the point of a blobless mirror.
+#
+#   Each (mirror, sha) pair is backfilled at most once per run via %::blobs_backfilled.
 sub backfill_revision_blobs($$)
 {
     my $mirror_dir = shift;
     my $rev = shift;
-
-    return if $::settings->{local_only};
 
     # Only partial (blobless) clones need a backfill. A full mirror has no
     # promisor remote, so this returns without touching the network.
@@ -595,11 +599,47 @@ sub backfill_revision_blobs($$)
 
     return if $::blobs_backfilled{"$mirror_dir\0$sha"};
 
-    # A plain "git fetch origin <sha>" is a no-op because the commit is already
-    # present; only its blobs are missing. --refetch re-requests the objects while a
-    # permissive filter overrides the stored blob:none filter so the blobs come too.
-    my $cmd = "git -C $mirror_dir fetch --refetch --filter=blob:limit=1g origin $sha";
+    # Enumerate the blobs of this revision's tree that are still missing locally.
+    # The trees themselves are present in a blobless mirror, so this is offline and
+    # cheap. Track whether rev-list itself succeeded: an enumeration failure must
+    # NOT be read as "nothing missing" (the earlier bug), it falls through to the
+    # refetch fallback below.
+    my @missing;
+    my $enumerated = 0;
+    if (open(my $fh, "-|", "git", "-C", $mirror_dir, "rev-list", "--objects",
+                           "--no-walk", $sha, "--missing=print")) {
+        while (<$fh>) {
+            push @missing, $1 if /^\?([0-9a-f]{40,})/;
+        }
+        $enumerated = close($fh);   # true only if rev-list exited 0
+    }
+
+    if ($enumerated and not @missing) {
+        # Reliable enumeration found every blob already present (e.g. a previous
+        # backfill in a persisted mirror): nothing to do.
+        $::blobs_backfilled{"$mirror_dir\0$sha"} = 1;
+        return;
+    }
+
     print "Backfilling blobs for revision $sha of ".basename($mirror_dir)."\n";
+
+    # Preferred path: fetch exactly the snapshot's missing blobs by object id (one
+    # snapshot's worth of ids is well under ARG_MAX). Requires the server to allow
+    # fetching reachable objects by sha (GitHub does); fall back otherwise.
+    if ($enumerated and @missing) {
+        my $cmd = "git -C $mirror_dir fetch --no-tags origin ".join(' ', @missing);
+        print "Execute: $cmd\n";
+        if (system($cmd) == 0) {
+            $::blobs_backfilled{"$mirror_dir\0$sha"} = 1;
+            return;
+        }
+        print "WARNING: targeted blob fetch failed; falling back to filtered refetch\n";
+    }
+
+    # Fallback: re-request the revision with a permissive filter. --refetch is needed
+    # because the commit is already present (a plain fetch would be a no-op); the
+    # filter overrides the stored blob:none. This also pulls historical blobs.
+    my $cmd = "git -C $mirror_dir fetch --refetch --filter=blob:limit=1g origin $sha";
     print "Execute: $cmd\n";
     if (system($cmd) == 0) {
         $::blobs_backfilled{"$mirror_dir\0$sha"} = 1;

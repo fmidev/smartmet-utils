@@ -84,12 +84,16 @@ FMI SmartSet server development related utils and files
 
 %changelog
 * Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-2.fmi
-- smartbuild: fix blobless-mirror builds failing with git "exit 128". The blob
-  backfill was gated by a "git rev-list --missing=print" count that failed open:
-  any error was read as "nothing missing", so the backfill was skipped and the
-  local clone of the blobless mirror had no file blobs to check out. Gate the
-  backfill on the mirror's promisor remote instead (set only on partial clones),
-  and track already-backfilled revisions per run so each is fetched at most once.
+- smartbuild: fix blobless-mirror builds failing with git "exit 128" when the
+  release CI builds with --local. The blob backfill returned early under --local,
+  but --local is exactly the pass that builds (mirrors are created in an earlier
+  --update pass and reused), so the local clone of the blobless mirror had no file
+  blobs to check out. Gate the backfill on the mirror's promisor remote instead of
+  --local: a blobless checkout needs the network wherever it runs, a full mirror
+  still does zero network. Fetch only the built revision's missing blobs by object
+  id (one snapshot) rather than --refetch'ing every historical blob, falling back
+  to a filtered refetch if the server refuses fetch-by-oid. Track already-
+  backfilled revisions per run so each is fetched at most once.
 
 * Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-1.fmi
 - smartbuild: anchor the Requires/BuildRequires/#TestRequires regex to the
