@@ -110,6 +110,10 @@ my @make_options;
 # pre-pass and main pass do not repeat git network operations.
 %::mirror_fetched = ();
 
+# Tracks "$mirror_dir\0$sha" pairs whose file blobs have already been backfilled
+# into a blobless mirror this run, so the same revision is not refetched twice.
+%::blobs_backfilled = ();
+
 # Populated by the planning pass (plan_module_rpms_recursive) for the
 # --release-rpms / --test-rpms paths:
 #   @::install_queue - modules whose target version is already available in the
@@ -559,17 +563,28 @@ sub ensure_mirror_present($)
     return $mirror_dir;
 }
 
-#   Backfill the file blobs of a single revision into a blobless mirror so that a
+#   Backfill the file blobs of a revision into a blobless mirror so that a
 #   subsequent local "git clone" of that mirror produces a complete working tree.
-#   No-op for full mirrors and for revisions already complete (blobs present), and
-#   skipped in --local mode since it needs network. Targets just the given
-#   revision's snapshot, not the whole history, to keep the transfer minimal.
+#   Skipped in --local mode (needs network) and for full mirrors (every blob is
+#   already present). A blobless mirror is identified reliably by its promisor
+#   remote, set by clone --filter; full mirrors never have it. We deliberately do
+#   NOT try to detect "blobs already present" by counting missing objects: that
+#   check failed open (any error was read as "nothing missing"), skipping the
+#   backfill and leaving the local clone with no blobs to check out (exit 128).
+#   Instead each (mirror, sha) pair is backfilled at most once per run, tracked in
+#   %::blobs_backfilled.
 sub backfill_revision_blobs($$)
 {
     my $mirror_dir = shift;
     my $rev = shift;
 
     return if $::settings->{local_only};
+
+    # Only partial (blobless) clones need a backfill. A full mirror has no
+    # promisor remote, so this returns without touching the network.
+    my $promisor = `git -C $mirror_dir config --get remote.origin.promisor 2>/dev/null`;
+    chomp $promisor;
+    return unless $promisor eq "true";
 
     my $sha = `git -C $mirror_dir rev-parse --verify "${rev}^{commit}" 2>/dev/null`;
     chomp $sha;
@@ -578,11 +593,7 @@ sub backfill_revision_blobs($$)
         return;
     }
 
-    # If this revision's tree already has all its blobs (full mirror, or a previous
-    # backfill), there is nothing to do.
-    my $missing = `git -C $mirror_dir rev-list --objects --no-walk $sha --missing=print 2>/dev/null | grep -c '^?'`;
-    chomp $missing;
-    return if defined($missing) and $missing eq "0";
+    return if $::blobs_backfilled{"$mirror_dir\0$sha"};
 
     # A plain "git fetch origin <sha>" is a no-op because the commit is already
     # present; only its blobs are missing. --refetch re-requests the objects while a
@@ -590,8 +601,11 @@ sub backfill_revision_blobs($$)
     my $cmd = "git -C $mirror_dir fetch --refetch --filter=blob:limit=1g origin $sha";
     print "Backfilling blobs for revision $sha of ".basename($mirror_dir)."\n";
     print "Execute: $cmd\n";
-    system($cmd) == 0
-        or print "WARNING: failed to backfill blobs for $sha; checkout may be incomplete\n";
+    if (system($cmd) == 0) {
+        $::blobs_backfilled{"$mirror_dir\0$sha"} = 1;
+    } else {
+        print "WARNING: failed to backfill blobs for $sha; checkout may be incomplete\n";
+    }
 }
 
 #   Update every already-cloned GIT mirror in parallel before the (serial) planning

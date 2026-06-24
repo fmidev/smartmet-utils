@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.6.24
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -83,6 +83,14 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-2.fmi
+- smartbuild: fix blobless-mirror builds failing with git "exit 128". The blob
+  backfill was gated by a "git rev-list --missing=print" count that failed open:
+  any error was read as "nothing missing", so the backfill was skipped and the
+  local clone of the blobless mirror had no file blobs to check out. Gate the
+  backfill on the mirror's promisor remote instead (set only on partial clones),
+  and track already-backfilled revisions per run so each is fetched at most once.
+
 * Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-1.fmi
 - smartbuild: anchor the Requires/BuildRequires/#TestRequires regex to the
   start of the line so that "Requires:" mentioned in spec comments or changelog
