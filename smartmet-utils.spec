@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.6.24
-Release: 2%{?dist}.fmi
+Version: 26.7.14
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -83,6 +83,9 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Tue Jul 14 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.7.14-1.fmi
+- Added smartmet-gdb to the build process
+
 * Wed Jun 24 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> 26.6.24-2.fmi
 - smartbuild: fix blobless-mirror builds failing with git "exit 128" when the
   release CI builds with --local. The blob backfill returned early under --local,

@@ -52,6 +52,7 @@ use Data::Dumper;
     "smartmet-textgenapps"                  => {},
     "smartmet-cropper"                      => {},
     "smartmet-press"                        => {},
+    "smartmet-gdb"                          => {},
     "smartmet-monitor"                      => {},
     "smartmet-qdless"                       => {},
     "smartmet-gdal-querydata-driver"        => {}
