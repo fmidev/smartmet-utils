@@ -78,6 +78,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
 %{_bindir}/smartrpmsort
+%{_bindir}/smarttestdep
 %{_datadir}/smartmet/devel/makefile.inc
 %{_datadir}/smartmet/devel/makefile-abicheck.inc
 %{_mandir}/man1/*.1.gz

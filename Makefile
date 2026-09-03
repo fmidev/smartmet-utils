@@ -15,7 +15,8 @@ PROG = \
 	smartmkciconfig \
 	smartmkrelease \
 	smartmktag \
-	smartrpmsort
+	smartrpmsort \
+	smarttestdep
 
 .PHONY: rpm
 
