@@ -255,7 +255,22 @@ sub run_in_docker($)
     # which differs from the container user, triggering Git's dubious-ownership check.
     push @inner_setup, "git config --global --add safe.directory '*'";
 
-    my $inner_cmd = join(' && ', @inner_setup, join(' ', $script, map { _shell_quote($_) } @inner_args));
+    #   The exit code of the containerized build cannot be taken from "docker run":
+    #   the ENTRYPOINT of the cibase images (/usr/local/bin/wrapper.sh) runs the
+    #   requested command and then does a final "sudo chown -R ..." of the caches,
+    #   so the exit status of the container is the one of that chown (always 0).
+    #   Have the inner smartbuild record its own exit code into a file below the
+    #   mounted working directory (same path inside the container as on the host)
+    #   and use that instead. CI relies on the exit code to decide whether the
+    #   built packages may be uploaded, so an unreadable status means failure.
+    my $status_file = "$cwd/.smartbuild-docker-status.$$";
+    unlink($status_file);
+
+    my $inner_script = join(' ', $script, map { _shell_quote($_) } @inner_args);
+    my $inner_run = "{ $inner_script; rc=\$?; echo \$rc > "
+                  . _shell_quote($status_file) . "; exit \$rc; }";
+
+    my $inner_cmd = join(' && ', @inner_setup, $inner_run);
 
     # Parse smartbuild's own Requires from the spec file (lives next to the script)
     my $spec_file = "$script_dir/smartmet-utils.spec";
@@ -310,11 +325,31 @@ sub run_in_docker($)
     print "Running in Docker: $image\n";
     print "Command: " . join(' ', @docker_run) . "\n";
     my $ret = system(@docker_run);
+    my $exit_code = ($ret == -1) ? 1 : ($ret >> 8);
+
+    #   Recorded status of the inner smartbuild (see above). Only missing if the
+    #   container never got that far, in which case the failure must not be
+    #   reported as success.
+    if (open(my $fh, '<', $status_file)) {
+        my $recorded = <$fh>;
+        close $fh;
+        chomp $recorded if defined($recorded);
+        if (defined($recorded) and $recorded =~ m/^\d+$/) {
+            $exit_code = int($recorded);
+        } else {
+            print "WARNING: unexpected content of $status_file, assuming failure\n";
+            $exit_code = 1;
+        }
+        unlink($status_file);
+    } else {
+        print "WARNING: the containerized build did not report its exit code, assuming failure\n";
+        $exit_code = 1 if $exit_code == 0;
+    }
 
     print "Removing temporary Docker image $tmp_image...\n";
     system('docker', 'image', 'rm', $tmp_image);
 
-    exit($ret == -1 ? 1 : ($ret >> 8));
+    exit($exit_code);
 }
 
 sub execute_cmd($)
