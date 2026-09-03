@@ -54,11 +54,8 @@ Requires: perl-JSON-PP
 #TestRequires: gdal312-devel
 #TestRequires: libcurl-devel
 #TestRequires: libtiff-devel >= 4.1
-
-%if 0%{?rhel} && 0%{rhel} >= 8
 #TestRequires: proj97-devel
 #TestRequires: sqlite-devel
-%endif
 
 %description devel
 FMI SmartSet server development related utils and files
