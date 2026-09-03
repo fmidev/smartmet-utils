@@ -26,6 +26,13 @@ use Data::Dumper;
 
 ################################################################################################
 
+#   Default module set. Per module the following keys are recognized (all optional):
+#     "branch"   - GIT branch to use instead of the ones given by --branch
+#     "spec"     - spec file name to use instead of the automatically detected one
+#     "prebuild" - shell command (or array of shell commands) to run in the checked
+#                  out source tree before make is invoked. Intended for projects
+#                  that generate their Makefile, for example autoconf/automake
+#                  based ones: [ "autoreconf -fi", "./configure" ]
 %::default_modules = (
     "smartmet-plugin-autocomplete"          => { "branch" => "", "spec" => ""},
     "smartmet-plugin-avi"                   => {},
@@ -1159,6 +1166,53 @@ sub print_summary($)
     close $fh;
 }
 
+#   Commands to be executed in the checked out source tree before make is
+#   invoked. Configured per module with the "prebuild" key of the config file
+#   (or of %::default_modules), either as a single string or as an array of
+#   strings. Intended for projects which do not ship a ready to use Makefile,
+#   for example autoconf/automake based ones ("autoreconf -fi", "./configure").
+sub get_prebuild_commands($)
+{
+    my $module = get_module_name(shift);
+    my $module_config = $::config->{modules}->{$module};
+    return () unless defined($module_config);
+
+    my $value = $module_config->{prebuild};
+    return () unless defined($value);
+
+    my @commands = (ref($value) eq 'ARRAY') ? @$value : ($value);
+    foreach (@commands) {
+        (defined($_) and not ref($_))
+            or die "CONFIG($module): 'prebuild' must be a string or an array of strings";
+    }
+
+    return grep { m/\S/ } @commands;
+}
+
+#   Run the configured prebuild commands of $module in directory $dir.
+#   Returns 1 if all commands succeeded (or none are configured), 0 otherwise.
+sub run_prebuild_commands($$$)
+{
+    my ($module, $dir, $output_redirect) = @_;
+
+    my @commands = get_prebuild_commands($module);
+    return 1 unless @commands;
+
+    foreach my $command (@commands) {
+        # Note: no output pipe here so that the exit code of $command is not lost
+        my $cmd = "( cd $dir && $command ) $output_redirect";
+        print "Execute (prebuild): $cmd\n";
+        if (system($cmd) != 0) {
+            print "\n";
+            print "*** Prebuild command of $module failed: $command\n";
+            print "\n";
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 sub build_and_install_module($)
 {
     not defined($::canceled) or die "Canceled";
@@ -1233,6 +1287,14 @@ sub build_and_install_module($)
                 return 0;
             }
         }
+    }
+
+    # Projects without a ready to use Makefile (autoconf/automake and similar)
+    # generate one here. Done after the build dependency installation above so
+    # that the tools required for generating it may be pulled in by builddep.
+    unless (run_prebuild_commands($module, $tmp, $output_redirect_append)) {
+        $::modules{$module}->{build} = -1;
+        return 0;
     }
 
     my $make_options = join(' ', @::make_options);
@@ -1563,7 +1625,12 @@ sub help
     print "Build script for SmartMet packagess\n";
     print "\n";
     print "Command line options:\n";
-    print "  --config             - config file (JSON format)\n";
+    print "  --config             - config file (JSON format). Recognized sections are 'modules',\n";
+    print "                         'ignore' and 'recursive'. A module entry may in addition to\n";
+    print "                         'repo' and 'private' contain 'prebuild': a command or an array\n";
+    print "                         of commands to run in the source tree before make (for example\n";
+    print "                         [ \"autoreconf -fi\", \"./configure\" ] for autoconf/automake\n";
+    print "                         based packages which do not ship a Makefile)\n";
     print "  --default-config     - use default built-in config\n";
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";
@@ -1660,6 +1727,9 @@ sub handle_params
             my $repo = defined($::default_github_name_map{$name}) ? $::default_github_name_map{$name} : $name;
             $config->{modules}->{$name}->{private} = $private;
             $config->{modules}->{$name}->{repo} = $repo;
+            if (defined($::default_modules{$name}->{prebuild})) {
+                $config->{modules}->{$name}->{prebuild} = $::default_modules{$name}->{prebuild};
+            }
         }
         foreach my $name (keys %::default_ignore) {
             $config->{ignore}->{$name} = 1;

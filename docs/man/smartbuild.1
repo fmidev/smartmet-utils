@@ -47,6 +47,58 @@ install it without rebuilding.
 .BR sudo (8)
 is required for package install steps, so the invoking user must have
 the appropriate privileges.
+.SH CONFIGURATION
+The configuration file given with
+.B \-\-config
+is JSON with the sections
+.BR modules ", " ignore " and " recursive .
+Each entry of
+.B modules
+is keyed by module name and may contain:
+.TP
+.B repo
+GitHub repository name, when it differs from the module name.
+.TP
+.B private
+Non\(hyzero for modules exported under
+.BR workspace/export/smartmet-private/ .
+.TP
+.B prebuild
+A shell command, or an array of shell commands, executed in the
+checked\(hyout source tree before
+.BR make .
+This is meant for projects that do not ship a ready to use
+.BR Makefile ,
+for example autoconf/automake based ones. The commands run after the
+optional
+.B \-\-builddep
+step, so tools needed for generating the
+.B Makefile
+may be pulled in as build dependencies, and they run in the temporary
+build tree for every build mode
+.RB ( \-\-current ", " \-\-release ", " \-\-release-rpms ", " \-\-test-rpms ).
+A failing command marks the module as failed and no
+.B make
+is attempted.
+.PP
+Example:
+.PP
+.RS 4
+.nf
+{
+  "modules": {
+    "some\-autotools\-package": {
+      "repo": "some\-autotools\-package",
+      "prebuild": [ "autoreconf \-fi", "./configure" ]
+    }
+  }
+}
+.fi
+.RE
+.PP
+The same key may be set for entries of the built\(hyin default module
+list, in which case it is also used with
+.BR \-\-default-config .
 .SH OPTIONS
 .TP
 .B \-\-help
@@ -54,7 +106,9 @@ Print built\(hyin help and exit.
 .TP
 .BI \-\-config " file"
 Read module configuration from the given JSON file (sections
-.BR modules ", " ignore ", " recursive ).
+.BR modules ", " ignore ", " recursive ). See
+.B CONFIGURATION
+above.
 .TP
 .B \-\-default-config
 Use the built\(hyin default module list (the public smartmet\-* set).
