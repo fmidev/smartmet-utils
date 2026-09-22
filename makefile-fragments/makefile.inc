@@ -17,11 +17,7 @@
 INSTALL_PROG = install -p -m 775
 INSTALL_DATA = install -p -m 664
 
-ifeq ($(origin PREFIX), undefined)
-  PREFIX = /usr
-else
-  PREFIX = $(PREFIX)
-endif
+PREFIX ?= /usr
 
 processor := $(shell uname -m)
 
