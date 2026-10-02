@@ -115,6 +115,13 @@ ifeq ($(ASAN), yes)
   LDFLAGS += -fsanitize=address -fsanitize=undefined
 endif
 
+# Line coverage support: build and run the tests, then e.g. "gcovr --root . obj"
+
+ifeq ($(COVERAGE), yes)
+  FLAGS += --coverage -fprofile-update=atomic
+  LDFLAGS += --coverage
+endif
+
 # Static code analyzer support (warning: currently only gcc-10+)
 
 ifeq ($(ANALYZER), yes)
