@@ -59,6 +59,7 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 - **Non-standard library paths**: GDAL, GEOS, PROJ, SQLite, SpatiaLite, and libconfig are searched in versioned install prefixes (e.g., `/usr/gdal312/`, `/usr/proj97/`) before falling back to system paths.
 - **Compiler auto-detection**: `smartcxxcheck` probes preprocessor defines to identify g++ vs clang++ and select `c++17` or `c++20` (GCC 11+).
 - **Sanitizers**: `TSAN=yes` or `ASAN=yes` on the make command line enables thread or address sanitizer.
+- **Coverage**: `COVERAGE=yes` builds with `--coverage` (gcov) for line coverage measurements.
 - **ABI checking**: `makefile.inc` itself provides `make abicheck` (per-consumer link check + vtable/data signature diff) and `make abicheck-deep` (adds libabigail `abicompat`), backed by the `smartabicheck` script. Separately, the older `makefile-abicheck.inc` provides `make abi-check rev1=<tag> [rev2=<tag>]` for comparing two git revisions of the same library via `abi-dumper` + `abi-compliance-checker`.
 
 ## CI

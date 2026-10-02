@@ -81,6 +81,7 @@ make profile            # -pg + optimizations
 ```bash
 make TSAN=yes           # ThreadSanitizer
 make ASAN=yes           # AddressSanitizer + UBSan
+make COVERAGE=yes       # gcov line coverage instrumentation
 make ANALYZER=yes       # gcc -fanalyzer (gcc-10+)
 make USE_LTO=yes        # link-time optimization
 ```
