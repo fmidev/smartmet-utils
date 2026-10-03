@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.10.2
+Version: 26.10.3
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -81,7 +81,7 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
-* Fri Oct 02 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.2-1.fmi
+* Sat Oct 03 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.3-1.fmi
 - makefile.inc: COVERAGE=yes builds with --coverage for line coverage measurements
 
 * Thu Sep  3 2026 Andris Pavenis <andris.pavenis@fmi.fi> 26.9.3-1.fmi
