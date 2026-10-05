@@ -17,11 +17,7 @@
 INSTALL_PROG = install -p -m 775
 INSTALL_DATA = install -p -m 664
 
-ifeq ($(origin PREFIX), undefined)
-  PREFIX = /usr
-else
-  PREFIX = $(PREFIX)
-endif
+PREFIX ?= /usr
 
 processor := $(shell uname -m)
 
@@ -475,6 +471,11 @@ CLEAN_TARGETS :=
 
 REQUIRED_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(REQUIRED_LIBS))
 PREFIX_LDFLAGS := $(filter-out $(__REMOVE_LINK_DIRS), -L$(libdir))
+
+# Add rpath when a custom PREFIX is used.
+ifneq ($(origin PREFIX), file)
+  PREFIX_LDFLAGS += -Wl,-rpath,$(libdir)
+endif
 
 #############################
 #     rpmbuild options      #
