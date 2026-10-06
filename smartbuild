@@ -106,6 +106,10 @@ my @make_options;
 %::available = ();
 %::installed = ();
 
+# Names of all (non-debug) packages available in the repositories, with -devel
+# suffixes kept, for installing exactly the packages a module builds.
+%::available_packages = ();
+
 # Maps every package name (main and subpackages) listed in a module's spec
 # file to the main module (repo) name that builds it. Populated by
 # register_subpackages_for_module() from each module's spec.
@@ -429,6 +433,7 @@ sub get_available_versions
         my $name = $words[$i];
         my $ver = $words[$i + 1];
         next if ($name =~ m/(?:debugsource|debuginfo)/);
+        $::available_packages{$name} = 1;
         $name =~ s/-devel$//;
         $ver =~ s/(-\d+)\..*/$1/;
         $ver =~ s/[0-9]+://;
@@ -1518,6 +1523,20 @@ sub plan_module_rpms_recursive
     classify_module($module);
 }
 
+#   Package manager arguments for installing a module from the repositories: the
+#   available packages its spec file defines. A glob such as 'smartmet-engine-grid*'
+#   would also match packages of other modules (smartmet-engine-grid-test,
+#   smartmet-qdtools-test-data, ...) and stale debuginfo packages of subpackages that
+#   are no longer built, which then conflict with the current version.
+sub install_args($)
+{
+    my $module = get_module_name(shift);
+    my @packages = sort grep {
+        $::subpackage_map{$_} eq $module and defined($::available_packages{$_})
+    } keys %::subpackage_map;
+    return @packages ? map { "'$_'" } @packages : ("'${module}*'");
+}
+
 #   Install (or upgrade) every module queued by the planning pass whose target
 #   version is already available in the RPM repositories, in a single package
 #   manager transaction. Falls back to installing one module at a time if the batch
@@ -1531,8 +1550,8 @@ sub run_planned_installs
         $log_redirect = " >workspace/log/install-batch.log 2>&1";
     }
 
-    my @globs = map { "'${_}*'" } @::install_queue;
-    my $cmd = "sudo $::pkg_man -y install ".join(' ', @globs).$log_redirect;
+    my @args = map { install_args($_) } @::install_queue;
+    my $cmd = "sudo $::pkg_man -y install ".join(' ', @args).$log_redirect;
     print "Installing ".scalar(@::install_queue)." up-to-date package(s) from repositories:\n";
     print "    $_\n" foreach (@::install_queue);
     print "Executing: $cmd\n";
@@ -1545,7 +1564,7 @@ sub run_planned_installs
     print "WARNING: batched install failed; retrying packages individually\n";
     cat("workspace/log/install-batch.log") if $::settings->{separate_logs};
     foreach my $module (@::install_queue) {
-        my $one = "sudo $::pkg_man -y install '${module}*'".$log_redirect;
+        my $one = "sudo $::pkg_man -y install ".join(' ', install_args($module)).$log_redirect;
         print "Executing: $one\n";
         if (system($one) == 0) {
             $::modules{$module}->{status} = 'installed';

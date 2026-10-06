@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.10.6
-Release: 2%{?dist}.fmi
+Release: 3%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -81,6 +81,11 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-3.fmi
+- smartbuild: install the available packages a module's spec defines instead of '<module>*',
+  which also matched other modules (smartmet-qdtools-test-data, smartmet-engine-grid-test)
+  and stale debuginfo packages conflicting with the current version
+
 * Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-2.fmi
 - smartbuild: modules flagged 'noarch' in the configuration are exported to rhel/noarch
   and an already published version is not installed (for test data packages)
