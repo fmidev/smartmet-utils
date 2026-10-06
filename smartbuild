@@ -534,6 +534,15 @@ sub get_export_dir($)
     }
 }
 
+# Modules flagged 'noarch' in the configuration are published in the RHEL version
+# independent noarch repository (rhel/noarch) instead of the beta repository.
+sub is_noarch_module($)
+{
+    my $module = get_module_name(shift);
+    return defined($::config->{modules}->{$module})
+        && $::config->{modules}->{$module}->{noarch};
+}
+
 sub export_rpms($)
 {
     my $module = get_module_name(shift);
@@ -541,10 +550,13 @@ sub export_rpms($)
         glob("$::noarch_rpm_dir/$module-*.rpm"),
         glob("$::x86_64_rpm_dir/$module-*.rpm"));
     my $export_to = get_export_dir($module);
+    my $noarch = is_noarch_module($module);
     foreach my $rpm (@rpms) {
         my $dest;
         my $fn = basename($rpm);
-        if ($rpm =~ m/-(?:debuginfo|debugsource)-/) {
+        if ($noarch) {
+            $dest = "$export_to/rhel/noarch";
+        } elsif ($rpm =~ m/-(?:debuginfo|debugsource)-/) {
             $dest = "$export_to/$::debug_dir";
         } else {
             $dest = "$export_to/$::x86_64_dir";
@@ -1143,6 +1155,10 @@ sub classify_module($)
             print " available from git ($gv): missing 'git push' suspected\n";
             $::modules{$module}->{status} = 'failed';
             push(@::failed_modules, $module);
+        } elsif (is_noarch_module($module)) {
+            # Already published. Nothing is built against noarch modules (typically
+            # large test data packages), so do not download and install them.
+            $::modules{$module}->{status} = 'uptodate';
         } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($av))) {
             # Not installed, or an older version is installed: install/upgrade from
             # the repository instead of building. ignore_installed only forces source
@@ -1669,7 +1685,9 @@ sub help
     print "                         'repo' and 'private' contain 'prebuild': a command or an array\n";
     print "                         of commands to run in the source tree before make (for example\n";
     print "                         [ \"autoreconf -fi\", \"./configure\" ] for autoconf/automake\n";
-    print "                         based packages which do not ship a Makefile)\n";
+    print "                         based packages which do not ship a Makefile), and 'noarch': 1\n";
+    print "                         to export the RPMs to rhel/noarch instead of rhel/<N>/beta and\n";
+    print "                         not to install an already published version (for test data)\n";
     print "  --default-config     - use default built-in config\n";
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";

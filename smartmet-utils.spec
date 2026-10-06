@@ -3,7 +3,7 @@
 Summary: utils
 Name: %{SPECNAME}
 Version: 26.10.6
-Release: 1%{?dist}.fmi
+Release: 2%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -81,6 +81,10 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-2.fmi
+- smartbuild: modules flagged 'noarch' in the configuration are exported to rhel/noarch
+  and an already published version is not installed (for test data packages)
+
 * Tue Oct  6 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.6-1.fmi
 - smartbuild: fix use of ignores in local configuration
 

@@ -80,6 +80,20 @@ build tree for every build mode
 A failing command marks the module as failed and no
 .B make
 is attempted.
+.TP
+.B noarch
+Non\(hyzero for architecture independent modules published in the
+RHEL version independent noarch repository, typically large test data
+packages. With
+.B \-\-release-rpms
+their RPMs are exported to
+.B workspace/export/<repo>/rhel/noarch/
+instead of
+.BR workspace/export/<repo>/rhel/<N>/beta/ ,
+and an already published version is not installed, since nothing is
+built against them. List such a module also under
+.B ignore
+so that test dependencies on it do not pull it into the build.
 .PP
 Example:
 .PP
