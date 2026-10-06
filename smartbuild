@@ -1017,6 +1017,9 @@ sub extract_requires($$$)
                 my $type = $1;
                 my $data = $2;
                 $data =~ s/[\s=><].*$//;
+                # Check ignored packages from the active configuration before and after
+                # subpackage name resolution
+                next if defined $::config->{ignore}->{$data};
                 # Resolve subpackage names (smartmet-X-devel, smartmet-X-libs, etc.)
                 # to the main module that builds them, using the map populated from
                 # spec files. Fall back to stripping -devel for transitive modules
@@ -1028,7 +1031,7 @@ sub extract_requires($$$)
                 }
                 next if $data eq $module;
                 if ($data =~ m/^smartmet-/ or defined($::config->{modules}->{$data})) {
-                    if (not defined $::default_ignore{$data}) {
+                    if (not defined $::config->{ignore}->{$data}) {
                         if ($type eq "Requires") {
                             push (@requires, $data);
                         } elsif ($type eq "BuildRequires") {
@@ -1777,7 +1780,7 @@ sub handle_params
             or die "Cannot open file $param{config_file}: $!";
         my $file_content = do { local $/; <$fh> };
 
-        $config = decode_json($file_content) or die "Failed to parse config file $param{onfig_file}: $!";
+        $config = decode_json($file_content) or die "Failed to parse config file $param{config_file}: $!";
         foreach (keys %$config) {
             if (!m/(?:modules|ignore|recursive)/) {
                 print "CONFIG: unrecognized section $_\n";
@@ -1786,8 +1789,15 @@ sub handle_params
         }
     }
 
-    defined($config->{modules}) or $config->{modules} = ();
-    defined($config->{ignore}) or $config->{ignore} = ();
+    if (!defined($param{config_file}) and !defined($param{default_config})) {
+        # No configuration specified: use built-in list of ignored packages
+        foreach my $name (keys %::default_ignore) {
+            $config->{ignore}->{$name} = 1;
+        }
+    }
+
+    defined($config->{modules}) or $config->{modules} = {};
+    defined($config->{ignore}) or $config->{ignore} = {};
 
     if (defined($param{add_module})) {
         my $add_module_list_ref = $param{add_module};
@@ -1835,7 +1845,7 @@ sub handle_params
     if (defined($param{remove_ignore})) {
         my $list_ref = $param{remove_ignore};
         foreach my $name (split(/,/, join(',', @$list_ref))) {
-            if (defined($config->{ignore}->{name})) {
+            if (defined($config->{ignore}->{$name})) {
                 delete($config->{ignore}->{$name});
             } else {
                 print "REMOVE_IGNORE($name): not found\n";
@@ -1863,7 +1873,7 @@ sub handle_params
                 print "SET_PRIVATE($name): no such module\n";
             }
 
-            if (defined($config->{ignore}->{name})) {
+            if (defined($config->{ignore}->{$name})) {
                 delete($config->{ignore}->{$name});
             } else {
                 print "REMOVE_IGNORE($name): not found\n";
