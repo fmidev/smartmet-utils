@@ -47,6 +47,7 @@ Tests reference `../smartcxxcheck` via the `__SMARTCXXCHECK__` variable so they 
 | `smartbuildtmprpm` | Perl | Like `smartbuildrev` but creates a temporary version commit first (for staging builds) |
 | `smartcxxcheck` | Perl | Detects compiler (g++ / clang++), version, and the appropriate C++ standard; output is consumed by `makefile.inc` |
 | `smartmkciconfig` | Perl | Generates `.circleci/config.yml` from templates; RHEL versions come from `~/.ci-rhel-versions` |
+| `smartmkpackagenote` | Bash | Generates the ELF note object (package name, version, git commit) that `makefile.inc` links into every binary; read by the server admin request `what=packages` |
 | `smartmkrelease` | Perl | Bumps the version in the `.spec` file, commits, and tags |
 | `smartmktag` | Perl | Creates a git tag matching the current spec version if one doesn't exist |
 | `smartpngdiff` | Shell | Compares two PNG images via PSNR (uses `smartimgdiff_psnr` for the measurement) |

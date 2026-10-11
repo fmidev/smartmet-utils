@@ -477,6 +477,37 @@ REQUIRED_LIBS := $(filter-out $(__REMOVE_LINK_DIRS), $(REQUIRED_LIBS))
 PREFIX_LDFLAGS := $(filter-out $(__REMOVE_LINK_DIRS), -L$(libdir))
 
 #############################
+#   Package identification  #
+#############################
+#
+# Every binary linked with $(LIBS) gets a "SmartMet" ELF note with the
+# package name, version and git commit, see smartmkpackagenote. The running
+# server reports them via the admin request what=packages.
+#
+# The commit is resolved once in the git checkout and exported, so that
+# 'make rpm' passes it on to the build inside rpmbuild.
+
+__SMARTMKPACKAGENOTE__ ?= smartmkpackagenote
+
+ifneq ($(shell command -v $(__SMARTMKPACKAGENOTE__) 2>/dev/null),)
+  ifeq ($(origin SMARTMET_GIT_COMMIT), undefined)
+    SMARTMET_GIT_COMMIT := $(shell $(__SMARTMKPACKAGENOTE__) --commit)
+  endif
+  export SMARTMET_GIT_COMMIT
+
+  __PACKAGE_NOTE_SKIP_GOALS := clean format rpm abicheck abicheck-deep
+  ifneq ($(wildcard smartmet-*.spec),)
+    ifneq ($(if $(MAKECMDGOALS),$(filter-out $(__PACKAGE_NOTE_SKIP_GOALS),$(MAKECMDGOALS)),all),)
+      PACKAGE_NOTE_OBJ := $(objdir)/smartmet-package-note.o
+      __PACKAGE_NOTE__ := $(shell $(__SMARTMKPACKAGENOTE__) $(PACKAGE_NOTE_OBJ) $(CXX))
+      # LIBS rather than LDFLAGS, since not all link rules use LDFLAGS. When LIBS is
+      # recursive this is expanded at link time, and 'make clean all' links without it
+      LIBS += $(wildcard $(PACKAGE_NOTE_OBJ))
+    endif
+  endif
+endif
+
+#############################
 #     rpmbuild options      #
 #############################
 

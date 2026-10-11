@@ -2,8 +2,8 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.10.6
-Release: 3%{?dist}.fmi
+Version: 26.10.11
+Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
 URL: http://www.weatherproof.fi
@@ -72,6 +72,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartbuildtmprpm
 %{_bindir}/smartcxxcheck
 %{_bindir}/smartmkciconfig
+%{_bindir}/smartmkpackagenote
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
 %{_bindir}/smartrpmsort
@@ -81,6 +82,12 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Sun Oct 11 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.11-1.fmi
+- New smartmkpackagenote: makefile.inc links a "SmartMet" ELF note with the package name,
+  version and git commit into every binary built from a directory with a smartmet-*.spec,
+  for the server admin request what=packages. The commit is exported from the checkout so
+  that 'make rpm' carries it into rpmbuild.
+
 * Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-3.fmi
 - smartbuild: install the available packages a module's spec defines instead of '<module>*',
   which also matched other modules (smartmet-qdtools-test-data, smartmet-engine-grid-test)

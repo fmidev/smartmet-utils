@@ -1,0 +1,93 @@
+.TH SMARTMKPACKAGENOTE 1 "2026-10-11" "smartmet-utils" "SmartMet Build Tools"
+.SH NAME
+smartmkpackagenote \- generate the SmartMet package identification ELF note
+.SH SYNOPSIS
+.B smartmkpackagenote
+.I output.o
+.RI [ compiler ]
+.br
+.B smartmkpackagenote \-\-commit
+.SH DESCRIPTION
+.B smartmkpackagenote
+writes an object file containing an ELF note with owner
+.B SmartMet
+and type
+.BR 0x534d0001 ,
+whose payload is a JSON object identifying the package being built:
+.PP
+.RS 4
+{"type":"rpm","name":"smartmet-library-spine","version":"26.10.11-1.el8.fmi","commit":"0123456789ab"}
+.RE
+.PP
+The shared SmartMet
+.B makefile.inc
+runs it in every directory containing a
+.B smartmet\-*.spec
+file and links the object into the libraries, engines, plugins and
+programs built there. A running SmartMet Server reports the notes of all
+loaded objects with the admin request
+.BR what=packages ,
+also on RHEL8 where rpmbuild does not add the freedesktop.org
+.B .note.package
+note, and for builds made outside rpmbuild.
+.PP
+Inside rpmbuild the
+.B type
+is
+.B rpm
+and the name and version come from the
+.BR RPM_PACKAGE_NAME ,
+.B RPM_PACKAGE_VERSION
+and
+.B RPM_PACKAGE_RELEASE
+environment variables. Otherwise the
+.B type
+is
+.BR source ,
+the name is that of the spec file and the version is read from its
+.B Version
+and
+.B Release
+fields, with
+.B %{?dist}
+expanded by
+.B rpm \-\-eval
+when available.
+.PP
+The
+.B commit
+is taken from the
+.B SMARTMET_GIT_COMMIT
+environment variable when it is set, which
+.B makefile.inc
+does in the git checkout so that the value survives into rpmbuild. Otherwise
+it is resolved with git, provided the
+.B Makefile
+of the current directory is tracked. A
+.B \-dirty
+suffix marks uncommitted changes to tracked files.
+.PP
+On x86_64 the object also declares the IBT and SHSTK CET features, since
+the linker would otherwise disable CET in every binary the object is
+linked into.
+.PP
+The output file is left untouched if its contents would not change, and it
+is removed if the directory has no spec file.
+.SH OPTIONS
+.TP
+.B \-\-commit
+Print the git commit of the current directory, with a
+.B \-dirty
+suffix if needed, and exit. Prints nothing outside a git checkout.
+.SH ENVIRONMENT
+.TP
+.B CC
+Compiler used to assemble the note if none is given on the command line
+(default
+.BR gcc ).
+.TP
+.B SMARTMET_GIT_COMMIT
+Commit to embed instead of querying git. An empty value omits the commit.
+.SH SEE ALSO
+.BR smartbuildcfg (1),
+.BR readelf (1)

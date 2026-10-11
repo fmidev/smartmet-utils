@@ -48,6 +48,7 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 | `smartmkrelease` | Perl | Bumps version in the `.spec` file, commits, and tags |
 | `smartmktag` | Perl | Creates a git tag matching the current spec version if one doesn't exist |
 | `smartmkciconfig` | Perl | Generates `.circleci/config.yml` from templates; RHEL versions come from `~/.ci-rhel-versions` |
+| `smartmkpackagenote` | Bash | Generates the ELF note object (package name, version, git commit) that `makefile.inc` links into every binary; read by the server admin request `what=packages` |
 | `smartpngdiff` | Shell | Compares two PNG images via PSNR (uses `smartimgdiff_psnr` for the actual measurement) |
 | `smartimgdiff_psnr` | C++ | Computes PSNR between two images using ImageMagick; optionally writes a difference image |
 | `smartrpmsort` | Perl | Keeps only the newest RPM version in a directory, archives older ones |
@@ -60,6 +61,7 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 - **Compiler auto-detection**: `smartcxxcheck` probes preprocessor defines to identify g++ vs clang++ and select `c++17` or `c++20` (GCC 11+).
 - **Sanitizers**: `TSAN=yes` or `ASAN=yes` on the make command line enables thread or address sanitizer.
 - **Coverage**: `COVERAGE=yes` builds with `--coverage` (gcov) for line coverage measurements.
+- **Package note**: when the directory has a `smartmet-*.spec`, `makefile.inc` runs `smartmkpackagenote` at parse time to create `obj/smartmet-package-note.o` and appends it to `LIBS` (not `LDFLAGS`, which several library Makefiles do not use for linking). `SMARTMET_GIT_COMMIT` is resolved once in the checkout and exported so `make rpm` passes it into rpmbuild, whose build directory has no `.git`. The object also declares x86 IBT/SHSTK so it never disables CET.
 - **ABI checking**: `makefile.inc` itself provides `make abicheck` (per-consumer link check + vtable/data signature diff) and `make abicheck-deep` (adds libabigail `abicompat`), backed by the `smartabicheck` script. Separately, the older `makefile-abicheck.inc` provides `make abi-check rev1=<tag> [rev2=<tag>]` for comparing two git revisions of the same library via `abi-dumper` + `abi-compliance-checker`.
 
 ## CI
