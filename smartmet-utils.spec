@@ -15,6 +15,10 @@ BuildRequires: bash
 BuildRequires: gcc-c++
 BuildRequires: ImageMagick-c++-devel
 Requires: make bash perl git
+Requires: perl-Carp-Always
+Requires: perl-Data-Dumper
+Requires: perl-Getopt-Long
+Requires: perl-JSON-PP
 
 %description
 FMI SmartSet server related utils
