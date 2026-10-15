@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.10.11
+Version: 26.10.15
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -15,6 +15,10 @@ BuildRequires: bash
 BuildRequires: gcc-c++
 BuildRequires: ImageMagick-c++-devel
 Requires: make bash perl git
+Requires: perl-Carp-Always
+Requires: perl-Data-Dumper
+Requires: perl-Getopt-Long
+Requires: perl-JSON-PP
 
 %description
 FMI SmartSet server related utils
@@ -82,11 +86,14 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
-* Sun Oct 11 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.11-1.fmi
+* Thu Oct 15 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.15-1.fmi
 - New smartmkpackagenote: makefile.inc links a "SmartMet" ELF note with the package name,
   version and git commit into every binary built from a directory with a smartmet-*.spec,
   for the server admin request what=packages. The commit is exported from the checkout so
   that 'make rpm' carries it into rpmbuild.
+
+* Mon Oct 12 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.12-1.fmi
+- smartbuild: build from source when a repository install fails
 
 * Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-3.fmi
 - smartbuild: install the available packages a module's spec defines instead of '<module>*',

@@ -134,8 +134,13 @@ my @make_options;
 #                      package-manager transaction before any building starts.
 #   @::build_queue   - modules that must be built from source, in dependency
 #                      order (each module appears after all of its dependencies).
+#   @::plan_order    - every planned module, in dependency order. The builds are
+#                      run in this order, so that a module whose repository install
+#                      failed can still be built from source before the modules
+#                      that depend on it (see run_planned_installs()).
 @::install_queue = ();
 @::build_queue = ();
+@::plan_order = ();
 
 $::pkg_man = undef;
 $::get_available = undef;
@@ -573,6 +578,17 @@ sub export_rpms($)
             unlink("$dest/$fn");
         }
         move($rpm, "$dest/$fn") or die "Filed to move: $!";
+    }
+}
+
+#   Remove the built RPMs of a module without exporting them.
+sub discard_rpms($)
+{
+    my $module = get_module_name(shift);
+    foreach my $rpm (glob("$::noarch_rpm_dir/$module-*.rpm"),
+                     glob("$::x86_64_rpm_dir/$module-*.rpm")) {
+        print "REMOVE: $rpm\n";
+        unlink($rpm) or print "WARNING: failed to remove $rpm: $!\n";
     }
 }
 
@@ -1521,6 +1537,7 @@ sub plan_module_rpms_recursive
     }
 
     classify_module($module);
+    push(@::plan_order, $module);
 }
 
 #   Package manager arguments for installing a module from the repositories: the
@@ -1541,6 +1558,14 @@ sub install_args($)
 #   version is already available in the RPM repositories, in a single package
 #   manager transaction. Falls back to installing one module at a time if the batch
 #   transaction fails, so a single bad package does not block all the others.
+#
+#   A module that still fails to install alone (for example a checksum mismatch
+#   after an RPM was overwritten in the repository without updating the metadata,
+#   an older version of a dependency that no longer installs, or a changed external
+#   requirement) is built from source instead by run_planned_builds(), before the
+#   modules depending on it. Such a build has the same version and release as the
+#   repository copy, so its RPMs are only installed locally and never exported:
+#   uploading them would overwrite the repository copy again.
 sub run_planned_installs
 {
     return unless @::install_queue;
@@ -1569,19 +1594,21 @@ sub run_planned_installs
         if (system($one) == 0) {
             $::modules{$module}->{status} = 'installed';
         } else {
-            print "ERROR: failed to install $module from repository\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
+            print "WARNING: failed to install $module from repository;".
+                  " building it from source (local install only, not exported)\n";
+            $::modules{$module}->{status} = 'build';
+            $::modules{$module}->{local_only} = 1;
         }
     }
 }
 
-#   Build (and install) every module queued by the planning pass, in dependency
-#   order. A module is skipped if any of its dependencies failed to build or
-#   install, mirroring the FAILED DEPENDENCY handling of the source-build path.
+#   Build (and install) every module queued by the planning pass, and every module
+#   whose repository install failed, in dependency order. A module is skipped if
+#   any of its dependencies failed to build or install, mirroring the FAILED
+#   DEPENDENCY handling of the source-build path.
 sub run_planned_builds
 {
-    foreach my $module (@::build_queue) {
+    foreach my $module (@::plan_order) {
         next unless defined($::modules{$module}->{status})
                     and $::modules{$module}->{status} eq 'build';
 
@@ -1608,7 +1635,11 @@ sub run_planned_builds
 
         print "BUILDING: $module-$::modules{$module}->{version}\n";
         if (build_and_install_module($module)) {
-            export_rpms($module);
+            if ($::modules{$module}->{local_only}) {
+                discard_rpms($module);
+            } else {
+                export_rpms($module);
+            }
             $::modules{$module}->{status} = 'built';
         } else {
             push(@::failed_modules, $module);
