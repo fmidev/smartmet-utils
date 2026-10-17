@@ -173,6 +173,12 @@ Only update local git mirrors, do not build.
 .B \-\-local
 Do not contact remote git; reuse what the mirrors already have.
 .TP
+.B \-\-full-mirror
+Clone full git mirrors. By default new mirrors are cloned blobless
+.RB ( \-\-filter=blob:none )
+and file contents are fetched on demand only for the revisions actually
+built.
+.TP
 .B \-\-dump-config
 Print the resolved configuration as JSON and exit (no build, no git
 update).
