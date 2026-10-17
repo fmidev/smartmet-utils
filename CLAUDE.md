@@ -7,30 +7,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `smartmet-utils` provides shared build infrastructure and developer utility scripts for the entire SmartMet ecosystem. It ships two key artifacts consumed by every other SmartMet project:
 
 - **`makefile-fragments/makefile.inc`** — the shared Makefile include that handles compiler detection, C++ standard selection, `REQUIRES`-based dependency resolution (via pkg-config and custom paths), sanitizer/LTO/analyzer flags, and install paths. Installed to `$(datadir)/smartmet/devel/makefile.inc`.
-- **A set of Perl/shell/C++ developer tools** installed to `$(bindir)/`.
+- **A set of Perl/shell developer tools** installed to `$(bindir)/`, with man pages in `docs/man/`.
 
 ## Build commands
 
 ```bash
-make                # Compiles only the C++ tool (smartimgdiff_psnr) via Magick++
-make test           # Runs tests in test/ (png comparison, proj/gdal/geos/sqlite detection)
-make install        # Installs all scripts + compiled tools + makefile fragments
+make                # Nothing to compile: all tools are scripts
+make test           # Runs tests in test/ (proj/gdal/geos/sqlite detection)
+make install        # Installs all scripts + man pages + makefile fragments
 make rpm            # Builds RPM package (smartmet-utils)
 make clean          # Removes build artifacts
 ```
 
-The only compiled artifact is `smartimgdiff_psnr` (C++17, links against Magick++). All other tools are interpreted (Perl or shell).
+There are no compiled artifacts: all tools are interpreted (Perl or shell). The image comparison tools `smartpngdiff`, `smartimagediff` and `smartimagediff_psnr` now live in `smartmet-library-regression`.
 
 ## Testing
 
 Tests live in `test/` and validate:
-- **pngdiff** — image comparison correctness (`test/pngdiff/`)
 - **check-proj.mk, check-gdal.mk, check-geos.mk, check-sqlite.mk** — that `makefile.inc` correctly detects library paths for PROJ, GDAL, GEOS, and SQLite
 
 Run a single test group:
 ```bash
-make -C test test-pngcomp
 make -C test test-check-proj
+make -C test test-check-sqlite
 ```
 
 Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the source tree without installation.
@@ -44,13 +43,12 @@ Tests reference `../smartcxxcheck` via `__SMARTCXXCHECK__` so they work from the
 | `smartbuildcfg` | Perl | `--prefix` returns the install prefix (derived from script location); also supports `--cflags`/`--libs` |
 | `smartbuildrev` | Perl | Checks out a git revision into a temp dir and builds its RPM |
 | `smartbuildtmprpm` | Perl | Like smartbuildrev but creates a temporary version commit first (for staging builds) |
+| `smartcheckinstalled` | Bash | Runs `ldd -r` on every installed binary, engine and plugin linking a `libsmartmet-*` library and explains unresolved symbols (engine late binding, missing `-l`, signature mismatch, stale package) |
 | `smartcxxcheck` | Perl | Detects compiler (g++/clang++), version, and appropriate C++ standard; output consumed by `makefile.inc` |
 | `smartmkrelease` | Perl | Bumps version in the `.spec` file, commits, and tags |
 | `smartmktag` | Perl | Creates a git tag matching the current spec version if one doesn't exist |
 | `smartmkciconfig` | Perl | Generates `.circleci/config.yml` from templates; RHEL versions come from `~/.ci-rhel-versions` |
 | `smartmkpackagenote` | Bash | Generates the ELF note object (package name, version, git commit) that `makefile.inc` links into every binary; read by the server admin request `what=packages` |
-| `smartpngdiff` | Shell | Compares two PNG images via PSNR (uses `smartimgdiff_psnr` for the actual measurement) |
-| `smartimgdiff_psnr` | C++ | Computes PSNR between two images using ImageMagick; optionally writes a difference image |
 | `smartrpmsort` | Perl | Keeps only the newest RPM version in a directory, archives older ones |
 | `smarttestdep` | Shell | Installs test dependencies from spec file `#TestRequires:` lines |
 
