@@ -600,7 +600,9 @@ sub get_repo_name($)
         return $::config->{modules}->{$module}->{repo};
     }
 
-    if (defined($::modules{$module})) {
+    # A dependency not in the configuration may already have a (repo-less) entry
+    # in %::modules before its mirror is cloned: fall back to the module name.
+    if (defined($::modules{$module}) and defined($::modules{$module}->{repo})) {
         return $::modules{$module}->{repo};
     }
 
