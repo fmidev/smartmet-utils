@@ -180,9 +180,9 @@ sub uniq
 }
 
 %::docker_images = (
-    '8'  => 'fmidev/smartmet-cibase-8:latest',
-    '9'  => 'fmidev/smartmet-cibase-9:latest',
-    '10' => 'quay.io/fmi/smartmet-cibase-10:latest',
+    '8'  => 'quay.io/fmi/smartmet-cibase-8-deps:latest',
+    '9'  => 'quay.io/fmi/smartmet-cibase-9-deps:latest',
+    '10' => 'quay.io/fmi/smartmet-cibase-10-deps:latest',
 );
 
 sub _shell_quote($)
