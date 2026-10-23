@@ -137,8 +137,25 @@ exists so accidental invocation from a wrong directory does not start
 downloading gigabytes of source.
 .TP
 .B \-\-release-rpms
-Build RPMs of the latest released versions, skipping modules whose
-release RPM is already present in the configured SmartMet repos.
+Build RPMs of the latest released versions. The version and the exact
+RPM file names a module builds are taken from
+.BR "rpmspec \-q \-\-builtrpms"
+(debuginfo and debugsource packages excluded) and compared against all
+versions available in the configured SmartMet repos:
+.RS
+.IP \(bu 2
+none of the files present: the module is built, installed and its RPMs
+exported to
+.B workspace/export/
+for upload;
+.IP \(bu 2
+all files present: the published version is installed;
+.IP \(bu 2
+only some files present: the module fails with a list of the missing
+files and is not rebuilt, since uploading a rebuild would overwrite the
+published files. Modules depending on it are skipped as failed; the
+others are built as usual.
+.RE
 .TP
 .B \-\-test-rpms
 Build test RPMs from the current branch HEAD. A local

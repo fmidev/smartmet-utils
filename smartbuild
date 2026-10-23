@@ -110,6 +110,14 @@ my @make_options;
 # suffixes kept, for installing exactly the packages a module builds.
 %::available_packages = ();
 
+# --release-rpms only: exact file names (name-version-release.arch, without the
+# .rpm suffix) of every version of every non-debug package available in the
+# repositories, compared against the RPM files rpmspec says a spec file builds.
+# %::available_rpms_any_dist holds the same names with the .elN dist tag removed,
+# for noarch modules published in the RHEL version independent repository.
+%::available_rpms = ();
+%::available_rpms_any_dist = ();
+
 # Maps every package name (main and subpackages) listed in a module's spec
 # file to the main module (repo) name that builds it. Populated by
 # register_subpackages_for_module() from each module's spec.
@@ -144,6 +152,7 @@ my @make_options;
 
 $::pkg_man = undef;
 $::get_available = undef;
+$::get_available_rpms = undef;
 $::debug_dir = undef;
 $::x86_64_dir = undef;
 $::builddep = undef;
@@ -404,18 +413,24 @@ sub get_installed_versions
     close $input;
 }
 
+#   Package name patterns to query from the repositories: all smartmet-* packages
+#   and the configured modules not following that naming.
+sub available_query_patterns
+{
+    my @patterns = ("'smartmet*'");
+    foreach (keys %{$::config->{modules}}) {
+        if (not m/^smartmet-/) {
+            push(@patterns, "'$_*'");
+        }
+    }
+    return @patterns;
+}
+
 sub get_available_versions
 {
     my $input;
 
-    my $cmd = "$::get_available 'smartmet*'";
-    my $modules_ref = $::config->{modules};
-    foreach (keys %$modules_ref) {
-        if (not m/^smartmet-/) {
-            $cmd = $cmd . " '$_*'";
-        }
-    }
-    $cmd = "LANG=en_US.utf8 ". $cmd . " 2>/dev/null";
+    my $cmd = "LANG=en_US.utf8 $::get_available ".join(' ', available_query_patterns())." 2>/dev/null";
     print "Execute: $cmd\n";
     open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
 
@@ -446,6 +461,28 @@ sub get_available_versions
     }
 }
 
+#   Populate %::available_rpms (see above). Unlike get_available_versions() a
+#   failure is fatal: with an empty list every module would look unpublished and
+#   be rebuilt, and uploading those builds would overwrite the repository copies.
+#   The query format ends with a space instead of a newline so that the output
+#   splits into file names whether or not the package manager appends newlines.
+sub get_available_rpms
+{
+    my $cmd = "LANG=en_US.utf8 $::get_available_rpms ".join(' ', available_query_patterns())." 2>/dev/null";
+    print "Execute: $cmd\n";
+    open(my $input, "$cmd |") or die "Failed to run $cmd: $!";
+    while (<$input>) {
+        foreach my $nvra (split) {
+            next unless $nvra =~ m/^\S+-[^-]+-[^-]+\.\w+$/;
+            next if $nvra =~ m/-(?:debuginfo|debugsource)-/;
+            $::available_rpms{$nvra} = 1;
+            (my $any_dist = $nvra) =~ s/\.el\d+(?:_\d+)?(?=\.)//;
+            $::available_rpms_any_dist{$any_dist} = 1;
+        }
+    }
+    close($input) or die "Failed to query available RPM files: $cmd";
+}
+
 sub get_system_info
 {
     my $rhel_ver_raw = `rpm --eval '%{rhel}' 2>/dev/null`;
@@ -457,6 +494,7 @@ sub get_system_info
         $::x86_64_dir = "rhel/7/beta";
         $::builddep = "yum-builddep";
         $::get_available = "repoquery $repo_config --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available_rpms = "repoquery $repo_config --show-duplicates --queryformat='%{name}-%{version}-%{release}.%{arch} '";
         @::branches_list = ( "rhel7" );
     } elsif ($::rhel_ver == 8 or $::rhel_ver == 9 or $::rhel_ver == 10) {
         $::pkg_man = "dnf";
@@ -464,6 +502,7 @@ sub get_system_info
         $::x86_64_dir = "rhel/$::rhel_ver/beta";
         $::builddep = "dnf builddep";
         $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available_rpms = "dnf $repo_config repoquery --available --queryformat='%{name}-%{version}-%{release}.%{arch} '";
     } elsif (not $::settings->{release_rpms}) {
     } else {
         die "Unsupported version '$::rhel_ver'";
@@ -492,6 +531,7 @@ sub get_system_info
     if (defined($::pkg_man)) {
         get_installed_versions;
         get_available_versions;
+        get_available_rpms if $::settings->{release_rpms};
     }
 }
 
@@ -800,6 +840,77 @@ sub locate_branch($)
     die "No branch found at $dir";
 }
 
+#   True when RPM packages are built (--release-rpms, --test-rpms). Versions are
+#   then taken from rpmspec, which expands macros exactly as rpmbuild does,
+#   instead of from the Version: and Release: lines of the spec file.
+sub builds_rpms
+{
+    return $::settings->{release_rpms} || $::settings->{test_rpms};
+}
+
+#   Run 'rpmspec -q' with the given query options on a spec file and return the
+#   non-empty output lines. Dies if rpmspec fails: rpmbuild would fail as well.
+sub rpmspec_query_file($@)
+{
+    my ($path, @options) = @_;
+    my $cmd = "rpmspec -q ".join(' ', @options)." "._shell_quote($path);
+    # Warnings (such as macros expanded in comments) are only shown on failure.
+    my $stderr = File::Temp->new();
+    my @lines = `$cmd 2>$stderr`;
+    if ($? != 0) {
+        cat($stderr->filename);
+        die "Failed to run $cmd";
+    }
+    chomp @lines;
+    return grep { length } @lines;
+}
+
+#   As rpmspec_query_file(), for spec file $spec of revision $rev of the GIT
+#   mirror $dir.
+sub rpmspec_query_git($$$@)
+{
+    my ($dir, $rev, $spec, @options) = @_;
+    my $tmpdir = File::Temp->newdir();
+    my $path = "$tmpdir/".basename($spec);
+    my $cmd = "git -C $dir show $rev:$spec > "._shell_quote($path);
+    system($cmd) == 0 or die "Failed to run $cmd";
+    return rpmspec_query_file($path, @options);
+}
+
+#   Version-release of the source package as given by rpmspec, in the form used
+#   for %::installed and %::available (dist tag and .fmi suffix removed).
+sub rpmspec_version(@)
+{
+    my ($vr) = @_;
+    defined($vr) or die "rpmspec did not report a version";
+    $vr =~ s/\.fmi$//;
+    $vr =~ s/\.el.*//;
+    return $vr;
+}
+
+sub rpmspec_version_from_git($$$)
+{
+    my ($dir, $rev, $spec) = @_;
+    return rpmspec_version(rpmspec_query_git($dir, $rev, $spec, '--srpm', "--qf '%{version}-%{release}\\n'"));
+}
+
+#   Names (name-version-release.arch, without .rpm) of the binary RPM files that
+#   building the given revision of a module produces, debuginfo and debugsource
+#   packages excluded, collected from all of its spec files.
+sub expected_rpm_files($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = get_mirror_dir($module);
+    my $rev = $::modules{$module}->{git_rev};
+    my @files;
+    foreach my $spec (@{$::modules{$module}->{spec_files}}) {
+        push(@files, grep { not m/-(?:debuginfo|debugsource)-/ }
+             rpmspec_query_git($mirror_dir, $rev, $spec,
+                               '--builtrpms', "--qf '%{name}-%{version}-%{release}.%{arch}\\n'"));
+    }
+    return uniq(@files);
+}
+
 sub extract_spec_version($$$)
 {
     my ($input, $version, $release);
@@ -808,6 +919,9 @@ sub extract_spec_version($$$)
     my $rev = shift;
     if (not $::settings->{release_rpms} and not $::settings->{release}) {
         $rev = locate_branch($dir);
+    }
+    if (builds_rpms()) {
+        return rpmspec_version_from_git($dir, $rev, $fn);
     }
     open($input, "git -C $dir show $rev:$fn |")
          or die "Failed to run git -C $dir show $rev:$fn: $!";
@@ -836,6 +950,9 @@ sub extract_spec_version($$$)
 sub read_spec_version_from_file($)
 {
     my $path = shift;
+    if (builds_rpms()) {
+        return rpmspec_version(rpmspec_query_file($path, '--srpm', "--qf '%{version}-%{release}\\n'"));
+    }
     my ($input, $version, $release);
     open($input, "<", $path) or die "Failed to open $path: $!";
     while (<$input>) {
@@ -1130,13 +1247,24 @@ sub get_last_release_info($)
 #   the package manager or building anything:
 #       'uptodate'  - nothing to do (already installed at the target version, or
 #                     no spec file)
-#       'install'   - target version is available in the RPM repositories; queued
-#                     in @::install_queue for a single batched install/upgrade
-#       'build'     - must be built from source; queued in @::build_queue
-#       'failed'    - a fatal inconsistency was detected (repo or installed version
-#                     newer than the one in git)
-#   The actual installs and builds are carried out later by run_planned_installs()
-#   and run_planned_builds().
+#       'install'   - target version is available in the RPM repositories; to be
+#                     installed in a single batched install/upgrade
+#       'build'     - must be built from source
+#       'skipped'   - the repositories are ahead of git; nothing to do
+#       'failed'    - a fatal inconsistency was detected (installed version newer
+#                     than the one in git, or only part of the RPM files of the
+#                     target version published)
+#   plan_module_rpms_recursive() queues the module accordingly. The actual installs
+#   and builds are carried out later by run_planned_installs() and
+#   run_planned_builds().
+#
+#   With --release-rpms the decision is made from the exact RPM files rpmspec says
+#   the spec files build, compared against the files available in the
+#   repositories:
+#       none present - build, export (for upload) and install the new version
+#       all present  - install the published version
+#       some present - error: rebuilding would overwrite the published files,
+#                      which breaks the checksums of the repository copies
 sub classify_module($)
 {
     my $module = get_module_name(shift);
@@ -1152,7 +1280,6 @@ sub classify_module($)
     if ($::settings->{test_rpms}) {
         $::modules{$module}->{requires_build} = 1;
         $::modules{$module}->{status} = 'build';
-        push(@::build_queue, $module);
         return;
     }
 
@@ -1170,47 +1297,83 @@ sub classify_module($)
         return;
     }
 
-    if (defined($av) and ($av eq $gv)) {
-        # Target version exists in the repositories.
-        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
-            # Installed version is newer than both git and the repository.
-            print "ERROR: Installed version of $module ($inst) is newer than";
-            print " available from git ($gv): missing 'git push' suspected\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
-        } elsif (is_noarch_module($module)) {
+    my @expected = expected_rpm_files($module);
+    if (not @expected) {
+        print "ERROR: spec files of $module $gv do not build any RPM packages\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+    $::modules{$module}->{rpm_files} = \@expected;
+
+    # Noarch modules are published in the RHEL version independent repository, so
+    # a copy built on another RHEL version (other .elN dist tag) counts as well.
+    my $any_dist = is_noarch_module($module);
+    my @present = grep {
+        my $nvra = $_;
+        $nvra =~ s/\.el\d+(?:_\d+)?(?=\.)// if $any_dist;
+        $any_dist ? $::available_rpms_any_dist{$nvra} : $::available_rpms{$nvra};
+    } @expected;
+
+    if (@present and @present < @expected) {
+        my %present = map { $_ => 1 } @present;
+        print "ERROR: only some of the RPM files of $module $gv are available in the repositories:\n";
+        foreach (@expected) {
+            printf("    %-8s %s.rpm\n", ($present{$_} ? "present" : "MISSING"), $_);
+        }
+        print "    Not rebuilding: that would overwrite the published files. Publish the\n";
+        print "    missing files from the original build, or release a new version.\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+
+    if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
+        # Installed version is newer than both git and the repository.
+        print "ERROR: Installed version of $module ($inst) is newer than";
+        print " available from git ($gv): missing 'git push' suspected\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+
+    if (@present) {
+        # All RPM files of the target version exist in the repositories.
+        if (is_noarch_module($module)) {
             # Already published. Nothing is built against noarch modules (typically
             # large test data packages), so do not download and install them.
             $::modules{$module}->{status} = 'uptodate';
-        } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($av))) {
+        } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($gv))) {
             # Not installed, or an older version is installed: install/upgrade from
             # the repository instead of building. ignore_installed only forces source
             # builds, never a reinstall of an already-current package.
-            print "$module $gv found in repository --> queued for install/upgrade\n";
             $::modules{$module}->{status} = 'install';
-            push(@::install_queue, $module);
         } else {
             $::modules{$module}->{status} = 'uptodate';
         }
         return;
     }
 
-    # Target version is not in the repositories: build it, unless it happens to be
-    # installed already at exactly that version.
+    # None of the RPM files of the target version is in the repositories: build it,
+    # unless it happens to be installed already at exactly that version.
     if (!defined($inst) or $::settings->{ignore_installed} or ($inst ne $gv)) {
-        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
-            print "ERROR: Installed version of $module ($inst) is newer than";
-            print " available from git ($gv): missing 'git push' suspected\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
-            return;
-        }
         $::modules{$module}->{requires_build} = 1;
         $::modules{$module}->{status} = 'build';
-        push(@::build_queue, $module);
     } else {
         $::modules{$module}->{status} = 'uptodate';
     }
+}
+
+#   The first dependency of a module (that is part of this run) which has failed,
+#   or undef if there is none. Dependencies are planned and built before the
+#   modules depending on them, so failures propagate transitively.
+sub failed_dependency($)
+{
+    my $module = get_module_name(shift);
+    foreach my $dep (sort(module_dependencies($module))) {
+        next unless defined $::modules{$dep};
+        if (defined($::modules{$dep}->{status}) and $::modules{$dep}->{status} eq 'failed') {
+            return $dep;
+        }
+    }
+    return undef;
 }
 
 sub print_summary($)
@@ -1539,6 +1702,25 @@ sub plan_module_rpms_recursive
     }
 
     classify_module($module);
+
+    my $status = $::modules{$module}->{status};
+    if ($status eq 'install' or $status eq 'build') {
+        my $failed_dep = failed_dependency($module);
+        if (defined($failed_dep)) {
+            print "ERROR: SKIPPING $module DUE TO FAILED DEPENDENCY: $failed_dep\n";
+            $::modules{$module}->{status} = $status = 'failed';
+        }
+    }
+    my $gv = $::modules{$module}->{version};
+    if ($status eq 'install') {
+        print "$module $gv found in repository --> queued for install/upgrade\n";
+        push(@::install_queue, $module);
+    } elsif ($status eq 'build') {
+        print "$module $gv --> queued for build\n";
+        push(@::build_queue, $module);
+    } elsif ($status eq 'failed') {
+        push(@::failed_modules, $module);
+    }
     push(@::plan_order, $module);
 }
 
@@ -1547,9 +1729,13 @@ sub plan_module_rpms_recursive
 #   would also match packages of other modules (smartmet-engine-grid-test,
 #   smartmet-qdtools-test-data, ...) and stale debuginfo packages of subpackages that
 #   are no longer built, which then conflict with the current version.
+#   With --release-rpms the exact RPM files of the target version are installed.
 sub install_args($)
 {
     my $module = get_module_name(shift);
+    if (defined($::modules{$module}->{rpm_files})) {
+        return map { "'$_'" } @{$::modules{$module}->{rpm_files}};
+    }
     my @packages = sort grep {
         $::subpackage_map{$_} eq $module and defined($::available_packages{$_})
     } keys %::subpackage_map;
@@ -1614,14 +1800,7 @@ sub run_planned_builds
         next unless defined($::modules{$module}->{status})
                     and $::modules{$module}->{status} eq 'build';
 
-        my $failed_dep;
-        foreach my $dep (module_dependencies($module)) {
-            next unless defined $::modules{$dep};
-            if (defined($::modules{$dep}->{status}) and $::modules{$dep}->{status} eq 'failed') {
-                $failed_dep = $dep;
-                last;
-            }
-        }
+        my $failed_dep = failed_dependency($module);
         if (defined($failed_dep)) {
             print "SKIPPING BUILD OF $module DUE TO FAILED DEPENDENCY: $failed_dep\n";
             $::modules{$module}->{status} = 'failed';
@@ -1743,7 +1922,10 @@ sub help
     print "  --default-config     - use default built-in config\n";
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";
-    print "  --release-rpms       - build RPM backages of latest release versions\n";
+    print "  --release-rpms       - build RPM backages of latest release versions. RPM files expected\n";
+    print "                         from 'rpmspec -q --builtrpms' are compared against the repositories:\n";
+    print "                         none present - build, install and export for upload; all present -\n";
+    print "                         install them; only some present - error (dependents are skipped)\n";
     print "  --test-rpms          - build test RPMs from current branch HEAD\n";
     print "                         (creates a local smartmkrelease-style version bump,\n";
     print "                         no release tag required, no availability check)\n";
