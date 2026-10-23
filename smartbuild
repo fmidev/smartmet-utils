@@ -135,6 +135,9 @@ my @make_options;
 # into a blobless mirror this run, so the same revision is not refetched twice.
 %::blobs_backfilled = ();
 
+# Mirrors for which locate_branch() has reported falling back to the default branch.
+%::default_branch_noted = ();
+
 # Populated by the planning pass (plan_module_rpms_recursive) for the
 # --release-rpms / --test-rpms paths:
 #   @::install_queue - modules whose target version is already available in the
@@ -829,6 +832,9 @@ sub update_local_mirror($)
     $::modules{$module} -> {"mirror"} = $mirror_dir;
 }
 
+#   The first branch of --branch present in the mirror. Repositories having none
+#   of them (for example ones using 'main' instead of 'master') fall back to the
+#   default branch of the repository.
 sub locate_branch($)
 {
     my $dir = shift;
@@ -836,6 +842,13 @@ sub locate_branch($)
         if (system("git -C $dir show-ref --verify refs/heads/$branch >/dev/null 2>&1") == 0) {
             return $branch;
         }
+    }
+    my $default = `git -C $dir symbolic-ref --short HEAD 2>/dev/null`;
+    chomp $default;
+    if ($default ne '' and system("git -C $dir show-ref --verify refs/heads/$default >/dev/null 2>&1") == 0) {
+        print "NOTE: none of the branches ".join(':', @::branches_list)." found at $dir,".
+              " using default branch $default\n" unless $::default_branch_noted{$dir}++;
+        return $default;
     }
     die "No branch found at $dir";
 }
