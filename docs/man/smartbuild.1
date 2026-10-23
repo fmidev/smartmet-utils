@@ -156,6 +156,12 @@ files and is not rebuilt, since uploading a rebuild would overwrite the
 published files. Modules depending on it are skipped as failed; the
 others are built as usual.
 .RE
+.IP
+The released revision is built, not the head of the branch: the git tag
+named after the version (as created by
+.BR smartmktag (1))
+when present, otherwise the newest mainline commit that set the version
+in the spec file.
 .TP
 .B \-\-test-rpms
 Build test RPMs from the current branch HEAD. A local
@@ -167,6 +173,8 @@ changelog matches the current commit SHA are reused.
 .B \-\-release
 Build, test and install the latest released versions via
 .BR "make install" .
+The released revision is chosen as for
+.BR \-\-release-rpms .
 .TP
 .B \-\-current
 Build, test and install the current HEAD of the configured branch

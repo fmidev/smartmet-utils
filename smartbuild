@@ -174,7 +174,7 @@ $SIG{INT} = sub {
 
 #my $old_die_handler = $SIG{__DIE__};
 $SIG{__DIE__} = sub {
-    print "Settings:\n" . Dumper(\%::settings);
+    print "Settings:\n" . Dumper($::settings);
     print "Modules:\n" . Dumper(\%::modules);
 #    $old_die_handler->();
 };
@@ -1020,16 +1020,15 @@ sub get_primary_spec_file($$)
     return $specs_ref->[0];
 }
 
-sub get_revision_and_version
+#   GIT revision, version and spec files of a module. Without --release and
+#   --release-rpms the revision is the head of the branch. Release builds use the
+#   released revision instead, so that later commits on the branch are not built
+#   under an already released version: the tag named after the version
+#   (smartmktag) if there is one, otherwise the newest commit that set the
+#   version in the primary spec file.
+sub get_revision_and_version($)
 {
-    my $input;
-
     my $dir = shift;
-    my $count = shift;
-    if ($count == 0) {
-	    $count = 10;
-    }
-
     my $branch = locate_branch($dir);
 
     my $module = basename($dir);
@@ -1042,42 +1041,36 @@ sub get_revision_and_version
     }
 
     my $fn = get_primary_spec_file($module, \@specs);
-    open($input, "git -C $dir log -$count $branch -- $fn |")
-	or die "Failed to get git history of $fn: $!";
-
     my $version = extract_spec_version($dir, $fn, $branch);
+    defined($version) or die "Failed to get version of $module from $fn";
 
-    if (not $::settings{release_rpms} and not $::settings{release}) {
+    if (not $::settings->{release_rpms} and not $::settings->{release}) {
         return ($branch, $version, $fn, \@specs);
-    } else {
-        if (defined($version)) {
-            # Check wheter GIT tag with name equal to version is present and use it if found
-            if (system("git -C $dir describe --tags tags/$version") == 0) {
-                print "Git tag $version found. Using it as revision\n";
-                return ("tags/$version", $version, $fn, \@specs);
-            }
+    }
 
-            open($input, "git -C $dir log -$count $branch $fn |")
-                or die "Failed to get git history of $fn: $!";
-            my $rev;
-            while (<$input>) {
-                if (m/^commit/) {
-                    chomp;
-                    s/^commit\s+//;
-                    my $curr_rev = $_;
-                    my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
-                    if (defined($curr_ver) and ($curr_ver ne $version)) {
-                        return ($curr_rev, $version, $fn, \@specs);
-                    }
-                }
-            }
+    if (system("git -C $dir rev-parse --verify --quiet 'refs/tags/$version^{commit}' >/dev/null") == 0) {
+        print "Git tag $version found. Using it as revision\n";
+        return ("tags/$version", $version, $fn, \@specs);
+    }
 
-            die "Failed to locate GIT revision for version $version";
-	} else {
-            die "Failed to get version";
-        }
+    # Walk the mainline history of the spec file from the newest commit back to the
+    # first one with another version (or one rpmspec cannot parse). Following only
+    # first parents keeps older versions on merged side branches out of the walk;
+    # a merge that set the version is itself the released revision.
+    my $release_rev;
+    open(my $input, "git -C $dir log --first-parent --format=%H $branch -- $fn |")
+        or die "Failed to get git history of $fn: $!";
+    while (my $rev = <$input>) {
+        chomp $rev;
+        my $curr_ver = eval { local $SIG{__DIE__}; extract_spec_version($dir, $fn, $rev) };
+        last if (not defined($curr_ver) or $curr_ver ne $version);
+        $release_rev = $rev;
     }
     close $input;
+
+    defined($release_rev) or die "Failed to locate GIT revision for version $version of $module";
+    print "No git tag $version: using commit $release_rev that set the version\n";
+    return ($release_rev, $version, $fn, \@specs);
 }
 
 #   Parse a spec file's textual content and return the list of package names
@@ -1228,7 +1221,7 @@ sub get_last_release_info($)
 {
     my $module = get_module_name(shift);
     my ($rev, $version, $spec, $specs_ref) =
-        get_revision_and_version($::modules{$module}->{"mirror"}, 10);
+        get_revision_and_version($::modules{$module}->{"mirror"});
 
     if (not defined $rev) {
         # Repository has no spec files at the top level: mark for skip.
@@ -1497,26 +1490,26 @@ sub build_and_install_module($)
     print_summary $module;
 
     # Mirrors are cloned blobless to save bandwidth/disk; backfill the blobs of the
-    # revision(s) this build checks out so the local clone below has a full working
-    # tree. The local clone first checks out the mirror's HEAD (default branch);
-    # the --test-rpms path additionally checks out $rev explicitly (see below).
-    backfill_revision_blobs($mirror_dir, "HEAD");
-    backfill_revision_blobs($mirror_dir, $rev) if $::settings->{test_rpms};
+    # revision this build checks out so the local clone below has a full working
+    # tree. The clone is made without a checkout, so the blobs of the mirror's HEAD
+    # are not needed.
+    backfill_revision_blobs($mirror_dir, $rev);
 
-    $cmd = "git -C $mirror_dir clone . $tmp $output_redirect_append";
+    $cmd = "git -C $mirror_dir clone --no-checkout . $tmp $output_redirect_append";
     print "Execute: $cmd\n";
     system($cmd) == 0
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
 
-    if ($::settings->{test_rpms}) {
-        # Check out the branch resolved by locate_branch so the actual sources
-        # built match --branch, then create a local smartmkrelease-style version
-        # bump so the RPM does not collide with any tagged release.
-        $cmd = "git -C $tmp checkout $rev $output_redirect_append";
-        print "Execute: $cmd\n";
-        system($cmd) == 0
-            or die "### Failed to check out $rev of $module";
+    # Check out the revision chosen by get_revision_and_version(): the branch
+    # resolved by locate_branch, or for release builds the released revision.
+    $cmd = "git -C $tmp checkout $rev $output_redirect_append";
+    print "Execute: $cmd\n";
+    system($cmd) == 0
+        or die "### Failed to check out $rev of $module";
 
+    if ($::settings->{test_rpms}) {
+        # Create a local smartmkrelease-style version bump so the RPM does not
+        # collide with any tagged release.
         my $head_sha = `git -C $tmp rev-parse HEAD`;
         chomp $head_sha;
         my $msg = "Test version (GIT $rev \@ $head_sha)";
@@ -2178,7 +2171,7 @@ if ($::settings->{dump_config}) {
     exit(0);
 }
 
-if ($::settings->{update_only} and $::settings{local_only}) {
+if ($::settings->{update_only} and $::settings->{local_only}) {
     die "Command line options --local and --update cannot both be specified";
 }
 
