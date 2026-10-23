@@ -2123,13 +2123,7 @@ sub handle_params
             if (defined($config->{modules}->{$name})) {
                 $config->{modules}->{$name}->{private} = 0;
             } else {
-                print "SET_PRIVATE($name): no such module\n";
-            }
-
-            if (defined($config->{ignore}->{$name})) {
-                delete($config->{ignore}->{$name});
-            } else {
-                print "REMOVE_IGNORE($name): not found\n";
+                print "CLEAR_PRIVATE($name): no such module\n";
             }
         }
     }
