@@ -127,6 +127,11 @@ my @make_options;
 # into a blobless mirror this run, so the same revision is not refetched twice.
 %::blobs_backfilled = ();
 
+# Directory of the SSH control socket shared by all git network operations of this
+# run (see setup_ssh_multiplexing()), and the PID of the process that owns it.
+$::ssh_control_dir = undef;
+$::ssh_control_owner = undef;
+
 # Populated by the planning pass (plan_module_rpms_recursive) for the
 # --release-rpms / --test-rpms paths:
 #   @::install_queue - modules whose target version is already available in the
@@ -607,6 +612,51 @@ sub get_repo_name($)
     return $module;
 }
 
+#   Share one SSH connection between all git network operations of this run.
+#   Some networks (e.g. the FMI VPN) rate limit new SSH connections: about the
+#   first 10-20 connections of a burst pass, after which new ones are reset during
+#   key exchange ("kex_exchange_identification: read: Connection reset by peer")
+#   for some tens of seconds. Sessions multiplexed over one master connection do
+#   not count against that limit. The master is started by the first SSH git
+#   command and stopped at exit. GIT_SSH_COMMAND or GIT_SSH set by the user wins.
+sub setup_ssh_multiplexing
+{
+    return if $::settings->{local_only};
+    return if defined($ENV{GIT_SSH_COMMAND}) or defined($ENV{GIT_SSH});
+
+    # Keep the path short: a UNIX socket path is limited to 108 bytes.
+    $::ssh_control_dir = tempdir("smartbuild-ssh-XXXXXX", TMPDIR => 1, CLEANUP => 1);
+    $::ssh_control_owner = $$;
+    $ENV{GIT_SSH_COMMAND} = "ssh -o ControlMaster=auto"
+                          . " -o ControlPath=$::ssh_control_dir/%C -o ControlPersist=60";
+}
+
+END {
+    # Forked children inherit this block: only the owner stops the master(s).
+    if (defined($::ssh_control_dir) and defined($::ssh_control_owner)
+            and $$ == $::ssh_control_owner) {
+        foreach my $socket (glob("$::ssh_control_dir/*")) {
+            system("ssh -o ControlPath=$socket -O exit smartbuild >/dev/null 2>&1");
+        }
+    }
+}
+
+#   Run a git network command, retrying with increasing delays. A rate limited
+#   SSH connection is refused for some tens of seconds, so a failure is often
+#   transient.
+sub run_git_with_retry($)
+{
+    my $cmd = shift;
+    my @delays = (15, 30, 60);
+    while (1) {
+        return 1 if system($cmd) == 0;
+        return 0 if not @delays or defined $::canceled;
+        my $delay = shift @delays;
+        print "WARNING: '$cmd' failed; retrying in $delay seconds\n";
+        sleep($delay);
+    }
+}
+
 sub ensure_mirror_present($)
 {
     my $module = get_module_name(shift);
@@ -621,7 +671,8 @@ sub ensure_mirror_present($)
         if ( -d $mirror_dir ) {
             # Fetch keeps the repository's existing object-filter setting: a mirror
             # cloned blobless stays blobless, a full mirror stays full.
-            system("git -C $mirror_dir fetch") == 0 or die "Failed to fetch updates for $mirror_dir";
+            run_git_with_retry("git -C $mirror_dir fetch")
+                or die "Failed to fetch updates for $mirror_dir";
         } else {
             my $url = "$::base_url/".get_repo_name($module);
             # Clone blobless by default (--filter=blob:none): all commits, trees and
@@ -632,7 +683,7 @@ sub ensure_mirror_present($)
             # --full-mirror restores the old behaviour of fetching everything up front.
             my $filter = $::settings->{full_mirror} ? "" : "--filter=blob:none ";
             print("Cloning: $url ==> $mirror_dir\n");
-            system("git -C $::mirror clone --bare --mirror ${filter}$url $mirror_dir") == 0
+            run_git_with_retry("git -C $::mirror clone --bare --mirror ${filter}$url $mirror_dir")
                 or die "Failed to clone $url";
         }
     }
@@ -739,14 +790,31 @@ sub prefetch_mirrors_parallel
     my @mirrors = glob("$::mirror/*.git");
     return unless @mirrors;
 
-    my $parallel = $::num_cpus > 1 ? 2 * $::num_cpus : 8;
-    $parallel = 16 if $parallel > 16;
+    # GitHub refuses more than about 6 concurrent sessions on one multiplexed SSH
+    # connection (see setup_ssh_multiplexing()); refused ones would fall back to
+    # separate connections and hit the connection rate limit again.
+    my $parallel = $::num_cpus > 1 ? 2 * $::num_cpus : 6;
+    $parallel = 6 if $parallel > 6;
 
     print "Updating ".scalar(@mirrors)." GIT mirror(s) in parallel (max $parallel concurrent)...\n";
 
     my %pid_to_module;
     my $running = 0;
     my @queue = @mirrors;
+
+    # Fetch the first mirror before starting the others, so that its SSH master
+    # connection exists and the parallel fetches share it instead of each racing
+    # to open one of their own.
+    {
+        my $dir = shift @queue;
+        my $module = basename($dir);
+        $module =~ s/\.git$//;
+        if (system("git -C $dir fetch --quiet >/dev/null 2>&1") == 0) {
+            $::mirror_fetched{$module} = 1;
+        } else {
+            print "WARNING: failed to update mirror $module; will retry on demand\n";
+        }
+    }
 
     while (@queue or $running) {
         while (@queue and $running < $parallel and not defined $::canceled) {
@@ -2035,6 +2103,7 @@ my $modules_ref = $::config->{modules};
 
 # Warm up all existing GIT mirrors concurrently so the serial passes below find them
 # already up to date instead of paying per-repository network latency one at a time.
+setup_ssh_multiplexing();
 prefetch_mirrors_parallel();
 
 # Pre-pass: clone/fetch each configured module's mirror and parse its spec file
