@@ -110,6 +110,14 @@ my @make_options;
 # suffixes kept, for installing exactly the packages a module builds.
 %::available_packages = ();
 
+# --release-rpms only: exact file names (name-version-release.arch, without the
+# .rpm suffix) of every version of every non-debug package available in the
+# repositories, compared against the RPM files rpmspec says a spec file builds.
+# %::available_rpms_any_dist holds the same names with the .elN dist tag removed,
+# for noarch modules published in the RHEL version independent repository.
+%::available_rpms = ();
+%::available_rpms_any_dist = ();
+
 # Maps every package name (main and subpackages) listed in a module's spec
 # file to the main module (repo) name that builds it. Populated by
 # register_subpackages_for_module() from each module's spec.
@@ -132,6 +140,9 @@ my @make_options;
 $::ssh_control_dir = undef;
 $::ssh_control_owner = undef;
 
+# Mirrors for which locate_branch() has reported falling back to the default branch.
+%::default_branch_noted = ();
+
 # Populated by the planning pass (plan_module_rpms_recursive) for the
 # --release-rpms / --test-rpms paths:
 #   @::install_queue - modules whose target version is already available in the
@@ -149,6 +160,7 @@ $::ssh_control_owner = undef;
 
 $::pkg_man = undef;
 $::get_available = undef;
+$::get_available_rpms = undef;
 $::debug_dir = undef;
 $::x86_64_dir = undef;
 $::builddep = undef;
@@ -167,7 +179,7 @@ $SIG{INT} = sub {
 
 #my $old_die_handler = $SIG{__DIE__};
 $SIG{__DIE__} = sub {
-    print "Settings:\n" . Dumper(\%::settings);
+    print "Settings:\n" . Dumper($::settings);
     print "Modules:\n" . Dumper(\%::modules);
 #    $old_die_handler->();
 };
@@ -409,18 +421,24 @@ sub get_installed_versions
     close $input;
 }
 
+#   Package name patterns to query from the repositories: all smartmet-* packages
+#   and the configured modules not following that naming.
+sub available_query_patterns
+{
+    my @patterns = ("'smartmet*'");
+    foreach (keys %{$::config->{modules}}) {
+        if (not m/^smartmet-/) {
+            push(@patterns, "'$_*'");
+        }
+    }
+    return @patterns;
+}
+
 sub get_available_versions
 {
     my $input;
 
-    my $cmd = "$::get_available 'smartmet*'";
-    my $modules_ref = $::config->{modules};
-    foreach (keys %$modules_ref) {
-        if (not m/^smartmet-/) {
-            $cmd = $cmd . " '$_*'";
-        }
-    }
-    $cmd = "LANG=en_US.utf8 ". $cmd . " 2>/dev/null";
+    my $cmd = "LANG=en_US.utf8 $::get_available ".join(' ', available_query_patterns())." 2>/dev/null";
     print "Execute: $cmd\n";
     open($input, "LANG=en_US.utf8 $cmd |") or die "Failed to run $cmd: $!";
 
@@ -451,6 +469,28 @@ sub get_available_versions
     }
 }
 
+#   Populate %::available_rpms (see above). Unlike get_available_versions() a
+#   failure is fatal: with an empty list every module would look unpublished and
+#   be rebuilt, and uploading those builds would overwrite the repository copies.
+#   The query format ends with a space instead of a newline so that the output
+#   splits into file names whether or not the package manager appends newlines.
+sub get_available_rpms
+{
+    my $cmd = "LANG=en_US.utf8 $::get_available_rpms ".join(' ', available_query_patterns())." 2>/dev/null";
+    print "Execute: $cmd\n";
+    open(my $input, "$cmd |") or die "Failed to run $cmd: $!";
+    while (<$input>) {
+        foreach my $nvra (split) {
+            next unless $nvra =~ m/^\S+-[^-]+-[^-]+\.\w+$/;
+            next if $nvra =~ m/-(?:debuginfo|debugsource)-/;
+            $::available_rpms{$nvra} = 1;
+            (my $any_dist = $nvra) =~ s/\.el\d+(?:_\d+)?(?=\.)//;
+            $::available_rpms_any_dist{$any_dist} = 1;
+        }
+    }
+    close($input) or die "Failed to query available RPM files: $cmd";
+}
+
 sub get_system_info
 {
     my $rhel_ver_raw = `rpm --eval '%{rhel}' 2>/dev/null`;
@@ -462,6 +502,7 @@ sub get_system_info
         $::x86_64_dir = "rhel/7/beta";
         $::builddep = "yum-builddep";
         $::get_available = "repoquery $repo_config --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available_rpms = "repoquery $repo_config --show-duplicates --queryformat='%{name}-%{version}-%{release}.%{arch} '";
         @::branches_list = ( "rhel7" );
     } elsif ($::rhel_ver == 8 or $::rhel_ver == 9 or $::rhel_ver == 10) {
         $::pkg_man = "dnf";
@@ -469,6 +510,7 @@ sub get_system_info
         $::x86_64_dir = "rhel/$::rhel_ver/beta";
         $::builddep = "dnf builddep";
         $::get_available = "dnf $repo_config repoquery --available --latest-limit 1 --queryformat='%{name} %{evr} %{repoid}'";
+        $::get_available_rpms = "dnf $repo_config repoquery --available --queryformat='%{name}-%{version}-%{release}.%{arch} '";
     } elsif (not $::settings->{release_rpms}) {
     } else {
         die "Unsupported version '$::rhel_ver'";
@@ -497,6 +539,7 @@ sub get_system_info
     if (defined($::pkg_man)) {
         get_installed_versions;
         get_available_versions;
+        get_available_rpms if $::settings->{release_rpms};
     }
 }
 
@@ -605,7 +648,9 @@ sub get_repo_name($)
         return $::config->{modules}->{$module}->{repo};
     }
 
-    if (defined($::modules{$module})) {
+    # A dependency not in the configuration may already have a (repo-less) entry
+    # in %::modules before its mirror is cloned: fall back to the module name.
+    if (defined($::modules{$module}) and defined($::modules{$module}->{repo})) {
         return $::modules{$module}->{repo};
     }
 
@@ -855,6 +900,9 @@ sub update_local_mirror($)
     $::modules{$module} -> {"mirror"} = $mirror_dir;
 }
 
+#   The first branch of --branch present in the mirror. Repositories having none
+#   of them (for example ones using 'main' instead of 'master') fall back to the
+#   default branch of the repository.
 sub locate_branch($)
 {
     my $dir = shift;
@@ -863,7 +911,85 @@ sub locate_branch($)
             return $branch;
         }
     }
+    my $default = `git -C $dir symbolic-ref --short HEAD 2>/dev/null`;
+    chomp $default;
+    if ($default ne '' and system("git -C $dir show-ref --verify refs/heads/$default >/dev/null 2>&1") == 0) {
+        print "NOTE: none of the branches ".join(':', @::branches_list)." found at $dir,".
+              " using default branch $default\n" unless $::default_branch_noted{$dir}++;
+        return $default;
+    }
     die "No branch found at $dir";
+}
+
+#   True when RPM packages are built (--release-rpms, --test-rpms). Versions are
+#   then taken from rpmspec, which expands macros exactly as rpmbuild does,
+#   instead of from the Version: and Release: lines of the spec file.
+sub builds_rpms
+{
+    return $::settings->{release_rpms} || $::settings->{test_rpms};
+}
+
+#   Run 'rpmspec -q' with the given query options on a spec file and return the
+#   non-empty output lines. Dies if rpmspec fails: rpmbuild would fail as well.
+sub rpmspec_query_file($@)
+{
+    my ($path, @options) = @_;
+    my $cmd = "rpmspec -q ".join(' ', @options)." "._shell_quote($path);
+    # Warnings (such as macros expanded in comments) are only shown on failure.
+    my $stderr = File::Temp->new();
+    my @lines = `$cmd 2>$stderr`;
+    if ($? != 0) {
+        cat($stderr->filename);
+        die "Failed to run $cmd";
+    }
+    chomp @lines;
+    return grep { length } @lines;
+}
+
+#   As rpmspec_query_file(), for spec file $spec of revision $rev of the GIT
+#   mirror $dir.
+sub rpmspec_query_git($$$@)
+{
+    my ($dir, $rev, $spec, @options) = @_;
+    my $tmpdir = File::Temp->newdir();
+    my $path = "$tmpdir/".basename($spec);
+    my $cmd = "git -C $dir show $rev:$spec > "._shell_quote($path);
+    system($cmd) == 0 or die "Failed to run $cmd";
+    return rpmspec_query_file($path, @options);
+}
+
+#   Version-release of the source package as given by rpmspec, in the form used
+#   for %::installed and %::available (dist tag and .fmi suffix removed).
+sub rpmspec_version(@)
+{
+    my ($vr) = @_;
+    defined($vr) or die "rpmspec did not report a version";
+    $vr =~ s/\.fmi$//;
+    $vr =~ s/\.el.*//;
+    return $vr;
+}
+
+sub rpmspec_version_from_git($$$)
+{
+    my ($dir, $rev, $spec) = @_;
+    return rpmspec_version(rpmspec_query_git($dir, $rev, $spec, '--srpm', "--qf '%{version}-%{release}\\n'"));
+}
+
+#   Names (name-version-release.arch, without .rpm) of the binary RPM files that
+#   building the given revision of a module produces, debuginfo and debugsource
+#   packages excluded, collected from all of its spec files.
+sub expected_rpm_files($)
+{
+    my $module = get_module_name(shift);
+    my $mirror_dir = get_mirror_dir($module);
+    my $rev = $::modules{$module}->{git_rev};
+    my @files;
+    foreach my $spec (@{$::modules{$module}->{spec_files}}) {
+        push(@files, grep { not m/-(?:debuginfo|debugsource)-/ }
+             rpmspec_query_git($mirror_dir, $rev, $spec,
+                               '--builtrpms', "--qf '%{name}-%{version}-%{release}.%{arch}\\n'"));
+    }
+    return uniq(@files);
 }
 
 sub extract_spec_version($$$)
@@ -874,6 +1000,9 @@ sub extract_spec_version($$$)
     my $rev = shift;
     if (not $::settings->{release_rpms} and not $::settings->{release}) {
         $rev = locate_branch($dir);
+    }
+    if (builds_rpms()) {
+        return rpmspec_version_from_git($dir, $rev, $fn);
     }
     open($input, "git -C $dir show $rev:$fn |")
          or die "Failed to run git -C $dir show $rev:$fn: $!";
@@ -902,6 +1031,9 @@ sub extract_spec_version($$$)
 sub read_spec_version_from_file($)
 {
     my $path = shift;
+    if (builds_rpms()) {
+        return rpmspec_version(rpmspec_query_file($path, '--srpm', "--qf '%{version}-%{release}\\n'"));
+    }
     my ($input, $version, $release);
     open($input, "<", $path) or die "Failed to open $path: $!";
     while (<$input>) {
@@ -956,16 +1088,15 @@ sub get_primary_spec_file($$)
     return $specs_ref->[0];
 }
 
-sub get_revision_and_version
+#   GIT revision, version and spec files of a module. Without --release and
+#   --release-rpms the revision is the head of the branch. Release builds use the
+#   released revision instead, so that later commits on the branch are not built
+#   under an already released version: the tag named after the version
+#   (smartmktag) if there is one, otherwise the newest commit that set the
+#   version in the primary spec file.
+sub get_revision_and_version($)
 {
-    my $input;
-
     my $dir = shift;
-    my $count = shift;
-    if ($count == 0) {
-	    $count = 10;
-    }
-
     my $branch = locate_branch($dir);
 
     my $module = basename($dir);
@@ -978,42 +1109,36 @@ sub get_revision_and_version
     }
 
     my $fn = get_primary_spec_file($module, \@specs);
-    open($input, "git -C $dir log -$count $branch -- $fn |")
-	or die "Failed to get git history of $fn: $!";
-
     my $version = extract_spec_version($dir, $fn, $branch);
+    defined($version) or die "Failed to get version of $module from $fn";
 
-    if (not $::settings{release_rpms} and not $::settings{release}) {
+    if (not $::settings->{release_rpms} and not $::settings->{release}) {
         return ($branch, $version, $fn, \@specs);
-    } else {
-        if (defined($version)) {
-            # Check wheter GIT tag with name equal to version is present and use it if found
-            if (system("git -C $dir describe --tags tags/$version") == 0) {
-                print "Git tag $version found. Using it as revision\n";
-                return ("tags/$version", $version, $fn, \@specs);
-            }
+    }
 
-            open($input, "git -C $dir log -$count $branch $fn |")
-                or die "Failed to get git history of $fn: $!";
-            my $rev;
-            while (<$input>) {
-                if (m/^commit/) {
-                    chomp;
-                    s/^commit\s+//;
-                    my $curr_rev = $_;
-                    my $curr_ver = extract_spec_version($dir, $fn, $curr_rev);
-                    if (defined($curr_ver) and ($curr_ver ne $version)) {
-                        return ($curr_rev, $version, $fn, \@specs);
-                    }
-                }
-            }
+    if (system("git -C $dir rev-parse --verify --quiet 'refs/tags/$version^{commit}' >/dev/null") == 0) {
+        print "Git tag $version found. Using it as revision\n";
+        return ("tags/$version", $version, $fn, \@specs);
+    }
 
-            die "Failed to locate GIT revision for version $version";
-	} else {
-            die "Failed to get version";
-        }
+    # Walk the mainline history of the spec file from the newest commit back to the
+    # first one with another version (or one rpmspec cannot parse). Following only
+    # first parents keeps older versions on merged side branches out of the walk;
+    # a merge that set the version is itself the released revision.
+    my $release_rev;
+    open(my $input, "git -C $dir log --first-parent --format=%H $branch -- $fn |")
+        or die "Failed to get git history of $fn: $!";
+    while (my $rev = <$input>) {
+        chomp $rev;
+        my $curr_ver = eval { local $SIG{__DIE__}; extract_spec_version($dir, $fn, $rev) };
+        last if (not defined($curr_ver) or $curr_ver ne $version);
+        $release_rev = $rev;
     }
     close $input;
+
+    defined($release_rev) or die "Failed to locate GIT revision for version $version of $module";
+    print "No git tag $version: using commit $release_rev that set the version\n";
+    return ($release_rev, $version, $fn, \@specs);
 }
 
 #   Parse a spec file's textual content and return the list of package names
@@ -1164,7 +1289,7 @@ sub get_last_release_info($)
 {
     my $module = get_module_name(shift);
     my ($rev, $version, $spec, $specs_ref) =
-        get_revision_and_version($::modules{$module}->{"mirror"}, 10);
+        get_revision_and_version($::modules{$module}->{"mirror"});
 
     if (not defined $rev) {
         # Repository has no spec files at the top level: mark for skip.
@@ -1196,13 +1321,24 @@ sub get_last_release_info($)
 #   the package manager or building anything:
 #       'uptodate'  - nothing to do (already installed at the target version, or
 #                     no spec file)
-#       'install'   - target version is available in the RPM repositories; queued
-#                     in @::install_queue for a single batched install/upgrade
-#       'build'     - must be built from source; queued in @::build_queue
-#       'failed'    - a fatal inconsistency was detected (repo or installed version
-#                     newer than the one in git)
-#   The actual installs and builds are carried out later by run_planned_installs()
-#   and run_planned_builds().
+#       'install'   - target version is available in the RPM repositories; to be
+#                     installed in a single batched install/upgrade
+#       'build'     - must be built from source
+#       'skipped'   - the repositories are ahead of git; nothing to do
+#       'failed'    - a fatal inconsistency was detected (installed version newer
+#                     than the one in git, or only part of the RPM files of the
+#                     target version published)
+#   plan_module_rpms_recursive() queues the module accordingly. The actual installs
+#   and builds are carried out later by run_planned_installs() and
+#   run_planned_builds().
+#
+#   With --release-rpms the decision is made from the exact RPM files rpmspec says
+#   the spec files build, compared against the files available in the
+#   repositories:
+#       none present - build, export (for upload) and install the new version
+#       all present  - install the published version
+#       some present - error: rebuilding would overwrite the published files,
+#                      which breaks the checksums of the repository copies
 sub classify_module($)
 {
     my $module = get_module_name(shift);
@@ -1218,7 +1354,6 @@ sub classify_module($)
     if ($::settings->{test_rpms}) {
         $::modules{$module}->{requires_build} = 1;
         $::modules{$module}->{status} = 'build';
-        push(@::build_queue, $module);
         return;
     }
 
@@ -1236,47 +1371,83 @@ sub classify_module($)
         return;
     }
 
-    if (defined($av) and ($av eq $gv)) {
-        # Target version exists in the repositories.
-        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
-            # Installed version is newer than both git and the repository.
-            print "ERROR: Installed version of $module ($inst) is newer than";
-            print " available from git ($gv): missing 'git push' suspected\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
-        } elsif (is_noarch_module($module)) {
+    my @expected = expected_rpm_files($module);
+    if (not @expected) {
+        print "ERROR: spec files of $module $gv do not build any RPM packages\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+    $::modules{$module}->{rpm_files} = \@expected;
+
+    # Noarch modules are published in the RHEL version independent repository, so
+    # a copy built on another RHEL version (other .elN dist tag) counts as well.
+    my $any_dist = is_noarch_module($module);
+    my @present = grep {
+        my $nvra = $_;
+        $nvra =~ s/\.el\d+(?:_\d+)?(?=\.)// if $any_dist;
+        $any_dist ? $::available_rpms_any_dist{$nvra} : $::available_rpms{$nvra};
+    } @expected;
+
+    if (@present and @present < @expected) {
+        my %present = map { $_ => 1 } @present;
+        print "ERROR: only some of the RPM files of $module $gv are available in the repositories:\n";
+        foreach (@expected) {
+            printf("    %-8s %s.rpm\n", ($present{$_} ? "present" : "MISSING"), $_);
+        }
+        print "    Not rebuilding: that would overwrite the published files. Publish the\n";
+        print "    missing files from the original build, or release a new version.\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+
+    if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
+        # Installed version is newer than both git and the repository.
+        print "ERROR: Installed version of $module ($inst) is newer than";
+        print " available from git ($gv): missing 'git push' suspected\n";
+        $::modules{$module}->{status} = 'failed';
+        return;
+    }
+
+    if (@present) {
+        # All RPM files of the target version exist in the repositories.
+        if (is_noarch_module($module)) {
             # Already published. Nothing is built against noarch modules (typically
             # large test data packages), so do not download and install them.
             $::modules{$module}->{status} = 'uptodate';
-        } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($av))) {
+        } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($gv))) {
             # Not installed, or an older version is installed: install/upgrade from
             # the repository instead of building. ignore_installed only forces source
             # builds, never a reinstall of an already-current package.
-            print "$module $gv found in repository --> queued for install/upgrade\n";
             $::modules{$module}->{status} = 'install';
-            push(@::install_queue, $module);
         } else {
             $::modules{$module}->{status} = 'uptodate';
         }
         return;
     }
 
-    # Target version is not in the repositories: build it, unless it happens to be
-    # installed already at exactly that version.
+    # None of the RPM files of the target version is in the repositories: build it,
+    # unless it happens to be installed already at exactly that version.
     if (!defined($inst) or $::settings->{ignore_installed} or ($inst ne $gv)) {
-        if (defined($inst) and (version_to_num($inst) > version_to_num($gv))) {
-            print "ERROR: Installed version of $module ($inst) is newer than";
-            print " available from git ($gv): missing 'git push' suspected\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
-            return;
-        }
         $::modules{$module}->{requires_build} = 1;
         $::modules{$module}->{status} = 'build';
-        push(@::build_queue, $module);
     } else {
         $::modules{$module}->{status} = 'uptodate';
     }
+}
+
+#   The first dependency of a module (that is part of this run) which has failed,
+#   or undef if there is none. Dependencies are planned and built before the
+#   modules depending on them, so failures propagate transitively.
+sub failed_dependency($)
+{
+    my $module = get_module_name(shift);
+    foreach my $dep (sort(module_dependencies($module))) {
+        next unless defined $::modules{$dep};
+        if (defined($::modules{$dep}->{status}) and $::modules{$dep}->{status} eq 'failed') {
+            return $dep;
+        }
+    }
+    return undef;
 }
 
 sub print_summary($)
@@ -1387,26 +1558,26 @@ sub build_and_install_module($)
     print_summary $module;
 
     # Mirrors are cloned blobless to save bandwidth/disk; backfill the blobs of the
-    # revision(s) this build checks out so the local clone below has a full working
-    # tree. The local clone first checks out the mirror's HEAD (default branch);
-    # the --test-rpms path additionally checks out $rev explicitly (see below).
-    backfill_revision_blobs($mirror_dir, "HEAD");
-    backfill_revision_blobs($mirror_dir, $rev) if $::settings->{test_rpms};
+    # revision this build checks out so the local clone below has a full working
+    # tree. The clone is made without a checkout, so the blobs of the mirror's HEAD
+    # are not needed.
+    backfill_revision_blobs($mirror_dir, $rev);
 
-    $cmd = "git -C $mirror_dir clone . $tmp $output_redirect_append";
+    $cmd = "git -C $mirror_dir clone --no-checkout . $tmp $output_redirect_append";
     print "Execute: $cmd\n";
     system($cmd) == 0
         or die "### Failed to copy revision $rev of $module to temporary directory: $!";
 
-    if ($::settings->{test_rpms}) {
-        # Check out the branch resolved by locate_branch so the actual sources
-        # built match --branch, then create a local smartmkrelease-style version
-        # bump so the RPM does not collide with any tagged release.
-        $cmd = "git -C $tmp checkout $rev $output_redirect_append";
-        print "Execute: $cmd\n";
-        system($cmd) == 0
-            or die "### Failed to check out $rev of $module";
+    # Check out the revision chosen by get_revision_and_version(): the branch
+    # resolved by locate_branch, or for release builds the released revision.
+    $cmd = "git -C $tmp checkout $rev $output_redirect_append";
+    print "Execute: $cmd\n";
+    system($cmd) == 0
+        or die "### Failed to check out $rev of $module";
 
+    if ($::settings->{test_rpms}) {
+        # Create a local smartmkrelease-style version bump so the RPM does not
+        # collide with any tagged release.
         my $head_sha = `git -C $tmp rev-parse HEAD`;
         chomp $head_sha;
         my $msg = "Test version (GIT $rev \@ $head_sha)";
@@ -1605,6 +1776,25 @@ sub plan_module_rpms_recursive
     }
 
     classify_module($module);
+
+    my $status = $::modules{$module}->{status};
+    if ($status eq 'install' or $status eq 'build') {
+        my $failed_dep = failed_dependency($module);
+        if (defined($failed_dep)) {
+            print "ERROR: SKIPPING $module DUE TO FAILED DEPENDENCY: $failed_dep\n";
+            $::modules{$module}->{status} = $status = 'failed';
+        }
+    }
+    my $gv = $::modules{$module}->{version};
+    if ($status eq 'install') {
+        print "$module $gv found in repository --> queued for install/upgrade\n";
+        push(@::install_queue, $module);
+    } elsif ($status eq 'build') {
+        print "$module $gv --> queued for build\n";
+        push(@::build_queue, $module);
+    } elsif ($status eq 'failed') {
+        push(@::failed_modules, $module);
+    }
     push(@::plan_order, $module);
 }
 
@@ -1613,9 +1803,13 @@ sub plan_module_rpms_recursive
 #   would also match packages of other modules (smartmet-engine-grid-test,
 #   smartmet-qdtools-test-data, ...) and stale debuginfo packages of subpackages that
 #   are no longer built, which then conflict with the current version.
+#   With --release-rpms the exact RPM files of the target version are installed.
 sub install_args($)
 {
     my $module = get_module_name(shift);
+    if (defined($::modules{$module}->{rpm_files})) {
+        return map { "'$_'" } @{$::modules{$module}->{rpm_files}};
+    }
     my @packages = sort grep {
         $::subpackage_map{$_} eq $module and defined($::available_packages{$_})
     } keys %::subpackage_map;
@@ -1680,14 +1874,7 @@ sub run_planned_builds
         next unless defined($::modules{$module}->{status})
                     and $::modules{$module}->{status} eq 'build';
 
-        my $failed_dep;
-        foreach my $dep (module_dependencies($module)) {
-            next unless defined $::modules{$dep};
-            if (defined($::modules{$dep}->{status}) and $::modules{$dep}->{status} eq 'failed') {
-                $failed_dep = $dep;
-                last;
-            }
-        }
+        my $failed_dep = failed_dependency($module);
         if (defined($failed_dep)) {
             print "SKIPPING BUILD OF $module DUE TO FAILED DEPENDENCY: $failed_dep\n";
             $::modules{$module}->{status} = 'failed';
@@ -1809,7 +1996,10 @@ sub help
     print "  --default-config     - use default built-in config\n";
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";
-    print "  --release-rpms       - build RPM backages of latest release versions\n";
+    print "  --release-rpms       - build RPM backages of latest release versions. RPM files expected\n";
+    print "                         from 'rpmspec -q --builtrpms' are compared against the repositories:\n";
+    print "                         none present - build, install and export for upload; all present -\n";
+    print "                         install them; only some present - error (dependents are skipped)\n";
     print "  --test-rpms          - build test RPMs from current branch HEAD\n";
     print "                         (creates a local smartmkrelease-style version bump,\n";
     print "                         no release tag required, no availability check)\n";
@@ -2007,13 +2197,7 @@ sub handle_params
             if (defined($config->{modules}->{$name})) {
                 $config->{modules}->{$name}->{private} = 0;
             } else {
-                print "SET_PRIVATE($name): no such module\n";
-            }
-
-            if (defined($config->{ignore}->{$name})) {
-                delete($config->{ignore}->{$name});
-            } else {
-                print "REMOVE_IGNORE($name): not found\n";
+                print "CLEAR_PRIVATE($name): no such module\n";
             }
         }
     }
@@ -2055,7 +2239,7 @@ if ($::settings->{dump_config}) {
     exit(0);
 }
 
-if ($::settings->{update_only} and $::settings{local_only}) {
+if ($::settings->{update_only} and $::settings->{local_only}) {
     die "Command line options --local and --update cannot both be specified";
 }
 

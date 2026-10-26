@@ -14,7 +14,7 @@ BuildRequires: make
 BuildRequires: bash
 BuildRequires: gcc-c++
 BuildRequires: ImageMagick-c++-devel
-Requires: make bash perl git
+Requires: make bash perl git rpm-build
 Requires: perl-Carp-Always
 Requires: perl-Data-Dumper
 Requires: perl-Getopt-Long
@@ -47,7 +47,7 @@ Provides: smartmktag
 Provides: smartpngdiff
 Provides: smartrpmsort
 Provides: smartmet-makefile-inc
-Requires: make bash perl
+Requires: make bash perl rpm-build
 Requires: perl-Carp-Always
 Requires: perl-Data-Dumper
 Requires: perl-Getopt-Long
