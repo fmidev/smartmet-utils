@@ -70,7 +70,8 @@ use Data::Dumper;
     "smartmet-test-data"                    => 1,
     "smartmet-topography-data"              => 1,
     "smartmet-qdtools-test-data"            => 1,
-    "smartmet-engine-grid-test"             => 1,
+    "smartmet-library-grid-files-test"      => 1,
+    "smartmet-engine-grid-test"             => 1, # FIXME: remove this later
     "smartmet-SFCGAL-libs"                  => 1,
     "smartmet-library-spine-plugin-test"    => 1,
     "smartmet-trajectory-formats"           => 1,
@@ -105,6 +106,10 @@ my @make_options;
 %::available = ();
 %::installed = ();
 
+# Names of all (non-debug) packages available in the repositories, with -devel
+# suffixes kept, for installing exactly the packages a module builds.
+%::available_packages = ();
+
 # Maps every package name (main and subpackages) listed in a module's spec
 # file to the main module (repo) name that builds it. Populated by
 # register_subpackages_for_module() from each module's spec.
@@ -122,6 +127,11 @@ my @make_options;
 # into a blobless mirror this run, so the same revision is not refetched twice.
 %::blobs_backfilled = ();
 
+# Directory of the SSH control socket shared by all git network operations of this
+# run (see setup_ssh_multiplexing()), and the PID of the process that owns it.
+$::ssh_control_dir = undef;
+$::ssh_control_owner = undef;
+
 # Populated by the planning pass (plan_module_rpms_recursive) for the
 # --release-rpms / --test-rpms paths:
 #   @::install_queue - modules whose target version is already available in the
@@ -129,8 +139,13 @@ my @make_options;
 #                      package-manager transaction before any building starts.
 #   @::build_queue   - modules that must be built from source, in dependency
 #                      order (each module appears after all of its dependencies).
+#   @::plan_order    - every planned module, in dependency order. The builds are
+#                      run in this order, so that a module whose repository install
+#                      failed can still be built from source before the modules
+#                      that depend on it (see run_planned_installs()).
 @::install_queue = ();
 @::build_queue = ();
+@::plan_order = ();
 
 $::pkg_man = undef;
 $::get_available = undef;
@@ -170,9 +185,9 @@ sub uniq
 }
 
 %::docker_images = (
-    '8'  => 'fmidev/smartmet-cibase-8:latest',
-    '9'  => 'fmidev/smartmet-cibase-9:latest',
-    '10' => 'quay.io/fmi/smartmet-cibase-10:latest',
+    '8'  => 'quay.io/fmi/smartmet-cibase-8-deps:latest',
+    '9'  => 'quay.io/fmi/smartmet-cibase-9-deps:latest',
+    '10' => 'quay.io/fmi/smartmet-cibase-10-deps:latest',
 );
 
 sub _shell_quote($)
@@ -428,6 +443,7 @@ sub get_available_versions
         my $name = $words[$i];
         my $ver = $words[$i + 1];
         next if ($name =~ m/(?:debugsource|debuginfo)/);
+        $::available_packages{$name} = 1;
         $name =~ s/-devel$//;
         $ver =~ s/(-\d+)\..*/$1/;
         $ver =~ s/[0-9]+://;
@@ -533,6 +549,15 @@ sub get_export_dir($)
     }
 }
 
+# Modules flagged 'noarch' in the configuration are published in the RHEL version
+# independent noarch repository (rhel/noarch) instead of the beta repository.
+sub is_noarch_module($)
+{
+    my $module = get_module_name(shift);
+    return defined($::config->{modules}->{$module})
+        && $::config->{modules}->{$module}->{noarch};
+}
+
 sub export_rpms($)
 {
     my $module = get_module_name(shift);
@@ -540,10 +565,13 @@ sub export_rpms($)
         glob("$::noarch_rpm_dir/$module-*.rpm"),
         glob("$::x86_64_rpm_dir/$module-*.rpm"));
     my $export_to = get_export_dir($module);
+    my $noarch = is_noarch_module($module);
     foreach my $rpm (@rpms) {
         my $dest;
         my $fn = basename($rpm);
-        if ($rpm =~ m/-(?:debuginfo|debugsource)-/) {
+        if ($noarch) {
+            $dest = "$export_to/rhel/noarch";
+        } elsif ($rpm =~ m/-(?:debuginfo|debugsource)-/) {
             $dest = "$export_to/$::debug_dir";
         } else {
             $dest = "$export_to/$::x86_64_dir";
@@ -555,6 +583,17 @@ sub export_rpms($)
             unlink("$dest/$fn");
         }
         move($rpm, "$dest/$fn") or die "Filed to move: $!";
+    }
+}
+
+#   Remove the built RPMs of a module without exporting them.
+sub discard_rpms($)
+{
+    my $module = get_module_name(shift);
+    foreach my $rpm (glob("$::noarch_rpm_dir/$module-*.rpm"),
+                     glob("$::x86_64_rpm_dir/$module-*.rpm")) {
+        print "REMOVE: $rpm\n";
+        unlink($rpm) or print "WARNING: failed to remove $rpm: $!\n";
     }
 }
 
@@ -573,6 +612,51 @@ sub get_repo_name($)
     return $module;
 }
 
+#   Share one SSH connection between all git network operations of this run.
+#   Some networks (e.g. the FMI VPN) rate limit new SSH connections: about the
+#   first 10-20 connections of a burst pass, after which new ones are reset during
+#   key exchange ("kex_exchange_identification: read: Connection reset by peer")
+#   for some tens of seconds. Sessions multiplexed over one master connection do
+#   not count against that limit. The master is started by the first SSH git
+#   command and stopped at exit. GIT_SSH_COMMAND or GIT_SSH set by the user wins.
+sub setup_ssh_multiplexing
+{
+    return if $::settings->{local_only};
+    return if defined($ENV{GIT_SSH_COMMAND}) or defined($ENV{GIT_SSH});
+
+    # Keep the path short: a UNIX socket path is limited to 108 bytes.
+    $::ssh_control_dir = tempdir("smartbuild-ssh-XXXXXX", TMPDIR => 1, CLEANUP => 1);
+    $::ssh_control_owner = $$;
+    $ENV{GIT_SSH_COMMAND} = "ssh -o ControlMaster=auto"
+                          . " -o ControlPath=$::ssh_control_dir/%C -o ControlPersist=60";
+}
+
+END {
+    # Forked children inherit this block: only the owner stops the master(s).
+    if (defined($::ssh_control_dir) and defined($::ssh_control_owner)
+            and $$ == $::ssh_control_owner) {
+        foreach my $socket (glob("$::ssh_control_dir/*")) {
+            system("ssh -o ControlPath=$socket -O exit smartbuild >/dev/null 2>&1");
+        }
+    }
+}
+
+#   Run a git network command, retrying with increasing delays. A rate limited
+#   SSH connection is refused for some tens of seconds, so a failure is often
+#   transient.
+sub run_git_with_retry($)
+{
+    my $cmd = shift;
+    my @delays = (15, 30, 60);
+    while (1) {
+        return 1 if system($cmd) == 0;
+        return 0 if not @delays or defined $::canceled;
+        my $delay = shift @delays;
+        print "WARNING: '$cmd' failed; retrying in $delay seconds\n";
+        sleep($delay);
+    }
+}
+
 sub ensure_mirror_present($)
 {
     my $module = get_module_name(shift);
@@ -587,7 +671,8 @@ sub ensure_mirror_present($)
         if ( -d $mirror_dir ) {
             # Fetch keeps the repository's existing object-filter setting: a mirror
             # cloned blobless stays blobless, a full mirror stays full.
-            system("git -C $mirror_dir fetch") == 0 or die "Failed to fetch updates for $mirror_dir";
+            run_git_with_retry("git -C $mirror_dir fetch")
+                or die "Failed to fetch updates for $mirror_dir";
         } else {
             my $url = "$::base_url/".get_repo_name($module);
             # Clone blobless by default (--filter=blob:none): all commits, trees and
@@ -598,7 +683,7 @@ sub ensure_mirror_present($)
             # --full-mirror restores the old behaviour of fetching everything up front.
             my $filter = $::settings->{full_mirror} ? "" : "--filter=blob:none ";
             print("Cloning: $url ==> $mirror_dir\n");
-            system("git -C $::mirror clone --bare --mirror ${filter}$url $mirror_dir") == 0
+            run_git_with_retry("git -C $::mirror clone --bare --mirror ${filter}$url $mirror_dir")
                 or die "Failed to clone $url";
         }
     }
@@ -705,14 +790,31 @@ sub prefetch_mirrors_parallel
     my @mirrors = glob("$::mirror/*.git");
     return unless @mirrors;
 
-    my $parallel = $::num_cpus > 1 ? 2 * $::num_cpus : 8;
-    $parallel = 16 if $parallel > 16;
+    # GitHub refuses more than about 6 concurrent sessions on one multiplexed SSH
+    # connection (see setup_ssh_multiplexing()); refused ones would fall back to
+    # separate connections and hit the connection rate limit again.
+    my $parallel = $::num_cpus > 1 ? 2 * $::num_cpus : 6;
+    $parallel = 6 if $parallel > 6;
 
     print "Updating ".scalar(@mirrors)." GIT mirror(s) in parallel (max $parallel concurrent)...\n";
 
     my %pid_to_module;
     my $running = 0;
     my @queue = @mirrors;
+
+    # Fetch the first mirror before starting the others, so that its SSH master
+    # connection exists and the parallel fetches share it instead of each racing
+    # to open one of their own.
+    {
+        my $dir = shift @queue;
+        my $module = basename($dir);
+        $module =~ s/\.git$//;
+        if (system("git -C $dir fetch --quiet >/dev/null 2>&1") == 0) {
+            $::mirror_fetched{$module} = 1;
+        } else {
+            print "WARNING: failed to update mirror $module; will retry on demand\n";
+        }
+    }
 
     while (@queue or $running) {
         while (@queue and $running < $parallel and not defined $::canceled) {
@@ -1017,6 +1119,9 @@ sub extract_requires($$$)
                 my $type = $1;
                 my $data = $2;
                 $data =~ s/[\s=><].*$//;
+                # Check ignored packages from the active configuration before and after
+                # subpackage name resolution
+                next if defined $::config->{ignore}->{$data};
                 # Resolve subpackage names (smartmet-X-devel, smartmet-X-libs, etc.)
                 # to the main module that builds them, using the map populated from
                 # spec files. Fall back to stripping -devel for transitive modules
@@ -1028,7 +1133,7 @@ sub extract_requires($$$)
                 }
                 next if $data eq $module;
                 if ($data =~ m/^smartmet-/ or defined($::config->{modules}->{$data})) {
-                    if (not defined $::default_ignore{$data}) {
+                    if (not defined $::config->{ignore}->{$data}) {
                         if ($type eq "Requires") {
                             push (@requires, $data);
                         } elsif ($type eq "BuildRequires") {
@@ -1139,6 +1244,10 @@ sub classify_module($)
             print " available from git ($gv): missing 'git push' suspected\n";
             $::modules{$module}->{status} = 'failed';
             push(@::failed_modules, $module);
+        } elsif (is_noarch_module($module)) {
+            # Already published. Nothing is built against noarch modules (typically
+            # large test data packages), so do not download and install them.
+            $::modules{$module}->{status} = 'uptodate';
         } elsif (not defined($inst) or (version_to_num($inst) < version_to_num($av))) {
             # Not installed, or an older version is installed: install/upgrade from
             # the repository instead of building. ignore_installed only forces source
@@ -1496,12 +1605,35 @@ sub plan_module_rpms_recursive
     }
 
     classify_module($module);
+    push(@::plan_order, $module);
+}
+
+#   Package manager arguments for installing a module from the repositories: the
+#   available packages its spec file defines. A glob such as 'smartmet-engine-grid*'
+#   would also match packages of other modules (smartmet-engine-grid-test,
+#   smartmet-qdtools-test-data, ...) and stale debuginfo packages of subpackages that
+#   are no longer built, which then conflict with the current version.
+sub install_args($)
+{
+    my $module = get_module_name(shift);
+    my @packages = sort grep {
+        $::subpackage_map{$_} eq $module and defined($::available_packages{$_})
+    } keys %::subpackage_map;
+    return @packages ? map { "'$_'" } @packages : ("'${module}*'");
 }
 
 #   Install (or upgrade) every module queued by the planning pass whose target
 #   version is already available in the RPM repositories, in a single package
 #   manager transaction. Falls back to installing one module at a time if the batch
 #   transaction fails, so a single bad package does not block all the others.
+#
+#   A module that still fails to install alone (for example a checksum mismatch
+#   after an RPM was overwritten in the repository without updating the metadata,
+#   an older version of a dependency that no longer installs, or a changed external
+#   requirement) is built from source instead by run_planned_builds(), before the
+#   modules depending on it. Such a build has the same version and release as the
+#   repository copy, so its RPMs are only installed locally and never exported:
+#   uploading them would overwrite the repository copy again.
 sub run_planned_installs
 {
     return unless @::install_queue;
@@ -1511,8 +1643,8 @@ sub run_planned_installs
         $log_redirect = " >workspace/log/install-batch.log 2>&1";
     }
 
-    my @globs = map { "'${_}*'" } @::install_queue;
-    my $cmd = "sudo $::pkg_man -y install ".join(' ', @globs).$log_redirect;
+    my @args = map { install_args($_) } @::install_queue;
+    my $cmd = "sudo $::pkg_man -y install ".join(' ', @args).$log_redirect;
     print "Installing ".scalar(@::install_queue)." up-to-date package(s) from repositories:\n";
     print "    $_\n" foreach (@::install_queue);
     print "Executing: $cmd\n";
@@ -1525,24 +1657,26 @@ sub run_planned_installs
     print "WARNING: batched install failed; retrying packages individually\n";
     cat("workspace/log/install-batch.log") if $::settings->{separate_logs};
     foreach my $module (@::install_queue) {
-        my $one = "sudo $::pkg_man -y install '${module}*'".$log_redirect;
+        my $one = "sudo $::pkg_man -y install ".join(' ', install_args($module)).$log_redirect;
         print "Executing: $one\n";
         if (system($one) == 0) {
             $::modules{$module}->{status} = 'installed';
         } else {
-            print "ERROR: failed to install $module from repository\n";
-            $::modules{$module}->{status} = 'failed';
-            push(@::failed_modules, $module);
+            print "WARNING: failed to install $module from repository;".
+                  " building it from source (local install only, not exported)\n";
+            $::modules{$module}->{status} = 'build';
+            $::modules{$module}->{local_only} = 1;
         }
     }
 }
 
-#   Build (and install) every module queued by the planning pass, in dependency
-#   order. A module is skipped if any of its dependencies failed to build or
-#   install, mirroring the FAILED DEPENDENCY handling of the source-build path.
+#   Build (and install) every module queued by the planning pass, and every module
+#   whose repository install failed, in dependency order. A module is skipped if
+#   any of its dependencies failed to build or install, mirroring the FAILED
+#   DEPENDENCY handling of the source-build path.
 sub run_planned_builds
 {
-    foreach my $module (@::build_queue) {
+    foreach my $module (@::plan_order) {
         next unless defined($::modules{$module}->{status})
                     and $::modules{$module}->{status} eq 'build';
 
@@ -1569,7 +1703,11 @@ sub run_planned_builds
 
         print "BUILDING: $module-$::modules{$module}->{version}\n";
         if (build_and_install_module($module)) {
-            export_rpms($module);
+            if ($::modules{$module}->{local_only}) {
+                discard_rpms($module);
+            } else {
+                export_rpms($module);
+            }
             $::modules{$module}->{status} = 'built';
         } else {
             push(@::failed_modules, $module);
@@ -1665,7 +1803,9 @@ sub help
     print "                         'repo' and 'private' contain 'prebuild': a command or an array\n";
     print "                         of commands to run in the source tree before make (for example\n";
     print "                         [ \"autoreconf -fi\", \"./configure\" ] for autoconf/automake\n";
-    print "                         based packages which do not ship a Makefile)\n";
+    print "                         based packages which do not ship a Makefile), and 'noarch': 1\n";
+    print "                         to export the RPMs to rhel/noarch instead of rhel/<N>/beta and\n";
+    print "                         not to install an already published version (for test data)\n";
     print "  --default-config     - use default built-in config\n";
     print "  --create-workspace   - create workspace (parameter is added to avoid accidental download\n";
     print "                         of large amount of data if started from wrong directory\n";
@@ -1777,7 +1917,7 @@ sub handle_params
             or die "Cannot open file $param{config_file}: $!";
         my $file_content = do { local $/; <$fh> };
 
-        $config = decode_json($file_content) or die "Failed to parse config file $param{onfig_file}: $!";
+        $config = decode_json($file_content) or die "Failed to parse config file $param{config_file}: $!";
         foreach (keys %$config) {
             if (!m/(?:modules|ignore|recursive)/) {
                 print "CONFIG: unrecognized section $_\n";
@@ -1786,8 +1926,15 @@ sub handle_params
         }
     }
 
-    defined($config->{modules}) or $config->{modules} = ();
-    defined($config->{ignore}) or $config->{ignore} = ();
+    if (!defined($param{config_file}) and !defined($param{default_config})) {
+        # No configuration specified: use built-in list of ignored packages
+        foreach my $name (keys %::default_ignore) {
+            $config->{ignore}->{$name} = 1;
+        }
+    }
+
+    defined($config->{modules}) or $config->{modules} = {};
+    defined($config->{ignore}) or $config->{ignore} = {};
 
     if (defined($param{add_module})) {
         my $add_module_list_ref = $param{add_module};
@@ -1835,7 +1982,7 @@ sub handle_params
     if (defined($param{remove_ignore})) {
         my $list_ref = $param{remove_ignore};
         foreach my $name (split(/,/, join(',', @$list_ref))) {
-            if (defined($config->{ignore}->{name})) {
+            if (defined($config->{ignore}->{$name})) {
                 delete($config->{ignore}->{$name});
             } else {
                 print "REMOVE_IGNORE($name): not found\n";
@@ -1863,7 +2010,7 @@ sub handle_params
                 print "SET_PRIVATE($name): no such module\n";
             }
 
-            if (defined($config->{ignore}->{name})) {
+            if (defined($config->{ignore}->{$name})) {
                 delete($config->{ignore}->{$name});
             } else {
                 print "REMOVE_IGNORE($name): not found\n";
@@ -1956,6 +2103,7 @@ my $modules_ref = $::config->{modules};
 
 # Warm up all existing GIT mirrors concurrently so the serial passes below find them
 # already up to date instead of paying per-repository network latency one at a time.
+setup_ssh_multiplexing();
 prefetch_mirrors_parallel();
 
 # Pre-pass: clone/fetch each configured module's mirror and parse its spec file

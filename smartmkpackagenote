@@ -1,0 +1,145 @@
+#!/bin/bash
+#
+# Generates an object file containing a "SmartMet" ELF note which identifies
+# the package a binary was built for: package name, version and git commit.
+# The shared makefile.inc links the object into every library, engine,
+# plugin and program so that a running server can report exactly what it
+# has loaded (admin request what=packages), also on RHEL8 where rpmbuild
+# does not add the freedesktop.org .note.package, and for builds made
+# outside rpmbuild.
+#
+# Usage:
+#
+#   smartmkpackagenote <output.o> [compiler]
+#       Write the note object. Nothing is written (and an existing output
+#       is removed) if the current directory has no smartmet-*.spec file.
+#
+#   smartmkpackagenote --commit
+#       Print the git commit of the current directory, with a "-dirty"
+#       suffix if tracked files have been modified. Prints nothing if the
+#       directory is not part of a git checkout.
+
+set -e
+
+git_commit() {
+    # The Makefile must be tracked, otherwise we might be inside an unrelated
+    # repository (for example an rpmbuild directory under a versioned $HOME)
+    git ls-files --error-unmatch Makefile >/dev/null 2>&1 || return 0
+    local commit
+    commit=$(git rev-parse --short=12 HEAD 2>/dev/null) || return 0
+    if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+        commit="$commit-dirty"
+    fi
+    echo "$commit"
+}
+
+json_escape() {
+    local s=${1//\\/\\\\}
+    echo "${s//\"/\\\"}"
+}
+
+if [ "$1" = "--commit" ]; then
+    git_commit
+    exit 0
+fi
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <output.o> [compiler] | --commit" >&2
+    exit 1
+fi
+
+out=$1
+compiler=${2:-${CC:-gcc}}
+
+spec=$(ls smartmet-*.spec 2>/dev/null | head -n 1)
+if [ -z "$spec" ]; then
+    rm -f "$out"
+    exit 0
+fi
+
+if [ -n "$RPM_PACKAGE_NAME" ]; then
+    # rpmbuild exports these to the %build and %install scripts
+    type=rpm
+    name=$RPM_PACKAGE_NAME
+    version="$RPM_PACKAGE_VERSION-$RPM_PACKAGE_RELEASE"
+else
+    type=source
+    name=${spec%.spec}
+    ver=$(sed -n 's/^Version:[[:space:]]*//p' "$spec" | head -n 1 | tr -d '[:space:]')
+    rel=$(sed -n 's/^Release:[[:space:]]*//p' "$spec" | head -n 1 | tr -d '[:space:]')
+    # Expand %{?dist} like rpmbuild would so that versions are comparable
+    # with the installed packages
+    dist=""
+    if command -v rpm >/dev/null 2>&1; then
+        dist=$(rpm --eval '%{?dist}' 2>/dev/null || true)
+    fi
+    rel=${rel//%\{?dist\}/$dist}
+    version="$ver-$rel"
+fi
+
+# Set by makefile.inc in the git checkout and inherited through rpmbuild,
+# whose build directory is no longer a checkout
+if [ -n "${SMARTMET_GIT_COMMIT+set}" ]; then
+    commit=$SMARTMET_GIT_COMMIT
+else
+    commit=$(git_commit)
+fi
+
+json="{\"type\":\"$type\",\"name\":\"$(json_escape "$name")\",\"version\":\"$(json_escape "$version")\""
+if [ -n "$commit" ]; then
+    json="$json,\"commit\":\"$(json_escape "$commit")\""
+fi
+json="$json}"
+
+# The JSON is embedded in an assembler string literal
+asm_json=${json//\\/\\\\}
+asm_json=${asm_json//\"/\\\"}
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+# Note owner "SmartMet", type 0x534d0001. %note works on both x86 and ARM
+# assemblers, unlike @note.
+cat > "$tmpdir/note.s" <<EOF
+	.section .note.smartmet,"a",%note
+	.p2align 2
+	.long 2f - 1f
+	.long 4f - 3f
+	.long 0x534d0001
+1:	.asciz "SmartMet"
+2:	.p2align 2
+3:	.asciz "$asm_json"
+4:	.p2align 2
+	.section .note.GNU-stack,"",%progbits
+EOF
+
+# The linker ANDs the x86 CET feature bits of all input objects. Declare
+# IBT and SHSTK compatibility (the object contains no code), otherwise this
+# object would disable CET in every binary built with -fcf-protection.
+asflags=""
+if [[ $($compiler -dumpmachine 2>/dev/null) == x86_64* ]]; then
+    cat >> "$tmpdir/note.s" <<EOF
+	.section .note.gnu.property,"a",%note
+	.p2align 3
+	.long 4
+	.long 16
+	.long 5
+	.asciz "GNU"
+	.long 0xc0000002
+	.long 4
+	.long 3
+	.p2align 3
+EOF
+    # Newer assemblers would add a second property note of their own
+    if $compiler -c -x assembler -Wa,-mx86-used-note=no -o /dev/null /dev/null 2>/dev/null; then
+        asflags="-Wa,-mx86-used-note=no"
+    fi
+fi
+
+mkdir -p "$(dirname "$out")"
+$compiler -c -x assembler $asflags -o "$tmpdir/note.o" "$tmpdir/note.s"
+
+# Keep the old file if nothing changed
+if ! cmp -s "$tmpdir/note.o" "$out"; then
+    mv "$tmpdir/note.o" "$out"
+fi

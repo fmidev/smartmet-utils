@@ -2,3 +2,5 @@
 /smartmet-utils.tar.gz
 /smartimgdiff_psnr
 /.vscode
+/obj
+/tmp

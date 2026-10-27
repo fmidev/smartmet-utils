@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.9.3
+Version: 26.10.15
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -15,6 +15,10 @@ BuildRequires: bash
 BuildRequires: gcc-c++
 BuildRequires: ImageMagick-c++-devel
 Requires: make bash perl git
+Requires: perl-Carp-Always
+Requires: perl-Data-Dumper
+Requires: perl-Getopt-Long
+Requires: perl-JSON-PP
 
 %description
 FMI SmartSet server related utils
@@ -72,6 +76,7 @@ FMI SmartSet server development related utils and files
 %{_bindir}/smartbuildtmprpm
 %{_bindir}/smartcxxcheck
 %{_bindir}/smartmkciconfig
+%{_bindir}/smartmkpackagenote
 %{_bindir}/smartmkrelease
 %{_bindir}/smartmktag
 %{_bindir}/smartrpmsort
@@ -81,6 +86,30 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Thu Oct 15 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.15-1.fmi
+- New smartmkpackagenote: makefile.inc links a "SmartMet" ELF note with the package name,
+  version and git commit into every binary built from a directory with a smartmet-*.spec,
+  for the server admin request what=packages. The commit is exported from the checkout so
+  that 'make rpm' carries it into rpmbuild.
+
+* Mon Oct 12 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.12-1.fmi
+- smartbuild: build from source when a repository install fails
+
+* Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-3.fmi
+- smartbuild: install the available packages a module's spec defines instead of '<module>*',
+  which also matched other modules (smartmet-qdtools-test-data, smartmet-engine-grid-test)
+  and stale debuginfo packages conflicting with the current version
+
+* Tue Oct  6 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.6-2.fmi
+- smartbuild: modules flagged 'noarch' in the configuration are exported to rhel/noarch
+  and an already published version is not installed (for test data packages)
+
+* Tue Oct  6 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.10.6-1.fmi
+- smartbuild: fix use of ignores in local configuration
+
+* Sat Oct 03 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.3-1.fmi
+- makefile.inc: COVERAGE=yes builds with --coverage for line coverage measurements
+
 * Thu Sep  3 2026 Andris Pavenis <andris.pavenis@fmi.fi> 26.9.3-1.fmi
 - Optionally support running one or several commands before actual building of packages by smartbuild
 - Remove manuals for executables and scripts moved to smartmet-library-regression

@@ -12,13 +12,13 @@ Two artifacts that the rest of the ecosystem consumes:
   include $(shell smartbuildcfg --prefix)/share/smartmet/devel/makefile.inc
   ```
 
-- **A set of developer tools** (Perl, shell, and one small C++ binary) installed to `$(bindir)/`. See [Tool reference](#tool-reference) below.
+- **A set of developer tools** (Perl and shell scripts) installed to `$(bindir)/`, with man pages in `docs/man/`. See [Tool reference](#tool-reference) below.
 
 ## Building, installing, testing
 
 ```bash
-make                # Compile the only C++ tool (smartimgdiff_psnr) via Magick++
-make install        # Install scripts, compiled tools, and makefile fragments (PREFIX=/usr by default)
+make                # Nothing to compile: all tools are scripts
+make install        # Install scripts, man pages, and makefile fragments (PREFIX=/usr by default)
 make rpm            # Build the smartmet-utils RPM
 make test           # Run tests in test/
 make clean          # Remove build artifacts
@@ -26,12 +26,11 @@ make clean          # Remove build artifacts
 
 Tests live under `test/` and validate:
 
-- **pngdiff** — image comparison correctness (`test/pngdiff/`)
 - **check-proj.mk, check-gdal.mk, check-geos.mk, check-sqlite.mk** — that `makefile.inc` finds the right paths for PROJ, GDAL, GEOS, and SQLite
 
 ```bash
-make -C test test-pngcomp
 make -C test test-check-proj
+make -C test test-check-sqlite
 ```
 
 Tests reference `../smartcxxcheck` via the `__SMARTCXXCHECK__` variable so they work in-tree without installing the package first.
@@ -45,14 +44,16 @@ Tests reference `../smartcxxcheck` via the `__SMARTCXXCHECK__` variable so they 
 | `smartbuildcfg` | Perl | Reports the install prefix (derived from script location); also supports `--cflags`, `--libs` |
 | `smartbuildrev` | Perl | Checks out a git revision into a temp dir and builds its RPM |
 | `smartbuildtmprpm` | Perl | Like `smartbuildrev` but creates a temporary version commit first (for staging builds) |
+| `smartcheckinstalled` | Bash | Runs `ldd -r` on every installed binary, engine and plugin linking a `libsmartmet-*` library and explains unresolved symbols (engine late binding, missing `-l`, signature mismatch, stale package) |
 | `smartcxxcheck` | Perl | Detects compiler (g++ / clang++), version, and the appropriate C++ standard; output is consumed by `makefile.inc` |
 | `smartmkciconfig` | Perl | Generates `.circleci/config.yml` from templates; RHEL versions come from `~/.ci-rhel-versions` |
+| `smartmkpackagenote` | Bash | Generates the ELF note object (package name, version, git commit) that `makefile.inc` links into every binary; read by the server admin request `what=packages` |
 | `smartmkrelease` | Perl | Bumps the version in the `.spec` file, commits, and tags |
 | `smartmktag` | Perl | Creates a git tag matching the current spec version if one doesn't exist |
-| `smartpngdiff` | Shell | Compares two PNG images via PSNR (uses `smartimgdiff_psnr` for the measurement) |
-| `smartimgdiff_psnr` | C++ | Computes PSNR between two images using ImageMagick; optionally writes a difference image |
 | `smartrpmsort` | Perl | Keeps only the newest RPM version in a directory; archives older ones |
 | `smarttestdep` | Shell | Installs test dependencies from `#TestRequires:` lines in spec files |
+
+The image comparison tools `smartpngdiff`, `smartimagediff` and `smartimagediff_psnr` are provided by `smartmet-library-regression`.
 
 ## Using makefile.inc in a SmartMet project
 
@@ -81,6 +82,7 @@ make profile            # -pg + optimizations
 ```bash
 make TSAN=yes           # ThreadSanitizer
 make ASAN=yes           # AddressSanitizer + UBSan
+make COVERAGE=yes       # gcov line coverage instrumentation
 make ANALYZER=yes       # gcc -fanalyzer (gcc-10+)
 make USE_LTO=yes        # link-time optimization
 ```

@@ -13,6 +13,7 @@ PROG = \
 	smartbuildcfg \
 	smartcxxcheck \
 	smartmkciconfig \
+	smartmkpackagenote \
 	smartmkrelease \
 	smartmktag \
 	smartrpmsort \
@@ -24,6 +25,7 @@ all:
 
 clean:
 	rm -f *~
+	rm -rf obj
 	rm -f $(CPP_PROG)
 	rm -f smartmet-$(MODULE).tar.gz
 
