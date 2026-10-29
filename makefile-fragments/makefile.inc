@@ -1,12 +1,12 @@
 ##############################################################################
 #
-#  This file is part of smartmet-library-macgyver
+#  This file is part of smartmet-utils
 #
 #  It is installed as $PREFIX/share/smartmet/devel/makefile.inc
 #
 #  For use in other projects put into the Makefile
 #
-#  include $$(PREFIX-/usr)/share/smartmet/devel/makefile.inc
+#  include $(or $(PREFIX),$(shell smartbuildcfg --prefix))/share/smartmet/devel/makefile.inc
 #
 ###############################################################################
 
