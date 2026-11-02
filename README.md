@@ -9,8 +9,10 @@ Two artifacts that the rest of the ecosystem consumes:
 - **`makefile-fragments/makefile.inc`** — the shared Makefile include that handles compiler detection, C++ standard selection, dependency resolution via the `REQUIRES` variable, sanitizer / LTO / analyzer flags, and install paths. Installed to `$(datadir)/smartmet/devel/makefile.inc`. Every project's `Makefile` starts with:
 
   ```makefile
-  include $(shell smartbuildcfg --prefix)/share/smartmet/devel/makefile.inc
+  include $(or $(PREFIX),$(shell smartbuildcfg --prefix))/share/smartmet/devel/makefile.inc
   ```
+
+`PREFIX` variable can be used to set the base install directory for SmartMet components.  It can be passed on Make command line, or via environment.
 
 - **A set of developer tools** (Perl and shell scripts) installed to `$(bindir)/`, with man pages in `docs/man/`. See [Tool reference](#tool-reference) below.
 
