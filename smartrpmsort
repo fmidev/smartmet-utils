@@ -31,8 +31,7 @@ for my $path (glob "$dir/*.rpm") {
     my @version_parts = split(/\./, $version);
     @version_parts = splice @version_parts, 0, 5;
     foreach my $part (@version_parts) { $part = sprintf("%05u", $part); }
-    my $sort_key = join("", @version_parts);
-    #print "'$fn' name='$name' ('$1','$2','$3','$release','$rhel') -> sort_key='$sort_key'\n";
+    my $sort_key = join("", @version_parts) . "-" . $release;
     if (defined $packages{$name}{$sort_key}) {
         print "Duplicate sort key $sort_key for package $path ($packages{$name}{$sort_key} have the same sort key\n";
         next;
