@@ -26,7 +26,7 @@ sub extract_spec_version
     my $fn = $_[1];
     my $rev = $_[2];
     open($input, "git -C $dir show $rev:$fn |")
-	 or "Failed to run git -C $dir show $rev:$fn: $!";
+     or die "Failed to run git -C $dir show $rev:$fn: $!";
     while (<$input>) {
 	chomp;
 	if (m/\s*Version:/) {

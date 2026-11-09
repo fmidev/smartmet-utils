@@ -24,6 +24,7 @@ use File::Temp qw/tempdir/;
 
 my $rev = "HEAD";
 my $top_opt = ".";
+my $cmd;
 if ($#ARGV == 0) {
     $rev = $ARGV[0];
 } elsif ($#ARGV == 1) {
@@ -37,7 +38,7 @@ my $build_dir = $build_top;
 
 print("Build directory: $build_dir\n");
 
-my $cmd = "git clone $top_opt $build_top";
+$cmd = "git clone $top_opt $build_top";
 print "Running: $cmd\n";
 system($cmd) == 0 or die "Failed to run $cmd: $!";
 
@@ -49,7 +50,7 @@ chomp $rev_info;
 my $msg = "Test version (GIT revision $rev_info)";
 print "rev_info=$rev_info\n";
 
-my $cmd = "( cd $build_dir && smartmkrelease \"$msg\" )";
+$cmd = "( cd $build_dir && smartmkrelease \"$msg\" )";
 system($cmd);
 
 $cmd = "make -C $build_dir rpm";

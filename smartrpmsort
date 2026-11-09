@@ -64,4 +64,4 @@ for my $name (sort keys %packages) {
     }
 }
 
-exit $ok ? 0 : 1;
+exit ($ok ? 0 : 1);
