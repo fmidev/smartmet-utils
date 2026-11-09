@@ -2,7 +2,7 @@
 %define SPECNAME smartmet-%{BINNAME}
 Summary: utils
 Name: %{SPECNAME}
-Version: 26.10.15
+Version: 26.11.9
 Release: 1%{?dist}.fmi
 License: FMI
 Group: Development/Tools
@@ -86,6 +86,12 @@ FMI SmartSet server development related utils and files
 %{_mandir}/man1/*.1.gz
 
 %changelog
+* Mon Nov  9 2026 Andris Pavēnis <andris.pavenis@fmi.fi> 26.11.9-1.fmi
+- smartbuild - decide version from SPEC file using RPM instead of custon parser when building ROM packages
+- smartbuild - other minor fixes
+- smartrpmsort - fix versions and release comparisons
+- makefile.inc - prefix support updates
+
 * Thu Oct 15 2026 Mika Heiskanen <mika.heiskanen@fmi.fi> - 26.10.15-1.fmi
 - New smartmkpackagenote: makefile.inc links a "SmartMet" ELF note with the package name,
   version and git commit into every binary built from a directory with a smartmet-*.spec,
